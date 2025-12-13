@@ -78,6 +78,18 @@ def display_table(screen) -> None:
     table_surface = pygame.transform.scale_by(table_image, scale)
     screen.blit(table_surface, (0,0))
 
+# Check if the user has given a valid max score for them to proceed to the next screen
+
+def validate_input(user_input) -> bool:
+
+    if int(user_input) == 0:
+
+        return False
+
+    else:
+
+        return True
+
 # Button class to instantiate different clickable buttons from
 
 class Button:
@@ -220,17 +232,17 @@ class TextBox:
 
 # Class to instantiate paddles from
 
-class paddle:
+class Paddle:
 
-    def __init__(self, image_file: str):
+    def __init__(self, image) -> None:
 
-        image = pygame.image.load(image_file).convert_alpha
-        self.image = pygame.transform.scale_by(image, 0.5)
+        self.image = image
+        self.rect = self.image.get_rect()
 
-    def move_paddle(self):
+    def move_paddle(self) -> None:
 
         mouse_pos = pygame.mouse.get_pos()
-        screen.blit(self.image, (mouse_pos[0]-self.image.get_width/2, mouse_pos[1]-self.image.get_height/2))
+        screen.blit(self.image, (mouse_pos[0]-self.rect.width/2, mouse_pos[1]-self.rect.height/2))
 
 
         
@@ -340,12 +352,44 @@ if __name__ == "__main__":
             # If the play_button is pressed, validate inputs and proceed to the main game screen
             if Play_Button.draw():
 
-                run_settings = False
-                run_game = True
+                if validate_input(Score_Input.user_input) == True:
+                    
+                    run_settings = False
+                    run_game = True
+                    max_score = int(Score_Input.user_input)
+                    
+                else:
+
+                    print("Please enter a valid max score that is greater than 0")
 
             #print(pygame.mouse.get_pos())
 
             # Handle quitting the game screen  
+            for event in pygame.event.get():
+
+                if event.type == pygame.QUIT:
+
+                    pygame.quit()
+                    exit()
+
+            pygame.display.update()
+
+            # We will be running the game at 60 fps
+            clock.tick(60)
+
+        while run_game == True:
+
+            display_table(screen)
+            
+            # If the first run, instantiate the paddle, preventing reinstantiation every loop
+            if first_run:
+
+                paddle_image = Paddles[paddle_colour].image
+                User_Paddle = Paddle(paddle_image)
+                first_run = False
+
+            User_Paddle.move_paddle()
+
             for event in pygame.event.get():
 
                 if event.type == pygame.QUIT:
