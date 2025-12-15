@@ -66,17 +66,26 @@ def display_settings(screen) -> None:
 
 # Display the table onto the screen
 
-def display_table(screen) -> None:
+class Table:
 
-    # Fill the background colour to cream
+    def __init__(self) -> None:
 
-    screen.fill((249, 244, 235))
+        image = pygame.image.load("interface_screens/table.png")
+        height = image.get_height()
 
-    table_image = pygame.image.load("interface_screens/table.png")
-    table_height = table_image.get_height()
-    scale = HEIGHT / table_height
-    table_surface = pygame.transform.scale_by(table_image, scale)
-    screen.blit(table_surface, (0,0))
+        scale = HEIGHT / height
+        self.image = pygame.transform.scale_by(image, scale)
+
+        self.height = self.image.get_height()
+        self.width = self.image.get_width()
+
+    def draw(self, screen) -> None:
+
+        # Fill the background colour to cream
+        screen.fill((249, 244, 235))
+
+        # Display the table onto the screen
+        screen.blit(self.image, (0,0))
 
 # Check if the user has given a valid max score for them to proceed to the next screen
 
@@ -238,15 +247,79 @@ class Paddle:
 
         self.image = image
         self.rect = self.image.get_rect()
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
+
+    # Procedure to move the paddle on the screen based on the user's mouse placement
 
     def move_paddle(self) -> None:
 
         mouse_pos = pygame.mouse.get_pos()
-        screen.blit(self.image, (mouse_pos[0]-self.rect.width/2, mouse_pos[1]-self.rect.height/2))
 
+        # Convert to an array to make the position mutable
+        draw_pos = np.array([mouse_pos[0], mouse_pos[1]])
+
+        # Ensure that the paddle is drawn only in a valid position
+        # n.b. /2 is for the radial length
+
+        if mouse_pos[0] < (5 + int(self.width/2)):
+            draw_pos[0] = 5 + self.width / 2 
+
+
+        elif mouse_pos[0] > (TABLE_WIDTH - int(self.width / 2) - 5):
+            draw_pos[0] = (TABLE_WIDTH - int(self.width / 2) - 5)
+
+        if mouse_pos[1] < (TABLE_HEIGHT / 2 + int(self.width / 2)):
+            draw_pos[1] = (TABLE_HEIGHT / 2 + int(self.width / 2))
+
+        elif mouse_pos[1] > (TABLE_HEIGHT - int(self.width / 2)):
+            draw_pos[1] = (TABLE_HEIGHT - int(self.width / 2))
+
+        screen.blit(self.image, (draw_pos[0]-self.width/2, draw_pos[1]-self.height/2))
+
+class Puck:
+
+    def __init__(self, image_file: str, scale: float) -> None:
+
+        image = pygame.image.load(image_file)
+        self.image = pygame.transform.scale_by(image, scale)
+        self.position = np.array([282, 413])
+        self.height = self.image.get_height()
+        self.width = self.image.get_width()
+
+    def draw(self) -> None:
+
+        screen.blit(self.image, (self.position[0] - self.width/2, self.position[1] - self.height/2))
 
         
 
+# Class for the scoreboard
+
+class Scoreboard:
+
+    def __init__(self, p_position: tuple, comp_position: tuple, font_file:  str, font_size: int) -> None:
+
+        self.font = pygame.font.Font(font_file, font_size)
+
+        self.p_score: int = 0
+        self.comp_score: int = 0
+
+        # The position where the score should be displayed
+        self.p_position: tuple = p_position
+        self.comp_position: tuple = comp_position
+
+    def draw(self) -> None:
+
+        p_score_display = self.font.render(str(self.p_score), True, RED, None)
+        p_score__rect = p_score_display.get_rect()
+        p_score__rect.center = self.p_position
+
+        comp_score_display = self.font.render(str(self.comp_score), True, RED, None)
+        comp_score__rect = comp_score_display.get_rect()
+        comp_score__rect.center = self.comp_position
+
+        screen.blit(p_score_display, ((self.p_position[0] - p_score__rect.width/2), (self.p_position[1] - p_score__rect.height/2)))
+        screen.blit(comp_score_display, ((self.comp_position[0] - comp_score__rect.width/2), (self.comp_position[1] - comp_score__rect.height/2)))
         
 
 # Instatiating objects
@@ -276,7 +349,14 @@ Score_Input = TextBox(position=(400, 480), font_file="Fonts/Grand9K Pixel.ttf", 
 Paddles = [Red_Paddle_Icon, Blue_Paddle_Icon, Green_Paddle_Icon, Purple_Paddle_Icon]
 Difficulties = [[Easy_Icon, Easy_Letters], [Medium_Icon, Medium_Letters], [Hard_Icon, Hard_Letters]]
 
+Scoreboard_Display = Scoreboard(p_position=(680,210), comp_position=(680,630), font_file="Fonts/Grand9K Pixel.ttf", font_size=100)
 
+Table_Display = Table()
+
+Puck_Display = Puck(image_file="red_puck.png", scale=0.4)
+
+TABLE_HEIGHT = Table_Display.height
+TABLE_WIDTH = Table_Display.width
 
 
 
@@ -357,7 +437,7 @@ if __name__ == "__main__":
                     run_settings = False
                     run_game = True
                     max_score = int(Score_Input.user_input)
-                    
+
                 else:
 
                     print("Please enter a valid max score that is greater than 0")
@@ -379,7 +459,9 @@ if __name__ == "__main__":
 
         while run_game == True:
 
-            display_table(screen)
+            Table_Display.draw(screen)
+            Scoreboard_Display.draw()
+            Puck_Display.draw()
             
             # If the first run, instantiate the paddle, preventing reinstantiation every loop
             if first_run:
