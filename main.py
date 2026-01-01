@@ -2,8 +2,9 @@
 import pygame
 import numpy as np
 from sys import exit
-from math import sqrt
-from time import sleep
+from math import sqrt, inf
+from time import sleep, time
+from random import randint, choice
 
 # Audio setup
 pygame.mixer.init()
@@ -20,6 +21,15 @@ RED = (214, 73, 59)
 HAND_CURSOR = pygame.SYSTEM_CURSOR_HAND
 POINTER_CURSOR = pygame.SYSTEM_CURSOR_ARROW
 TEXT_CURSOR = pygame.SYSTEM_CURSOR_IBEAM
+BLACK = (0,0,0)
+LIGHT_GREEN = (144, 238, 144)
+ORANGE = (255, 165, 0)
+BRIGHT_RED = (255, 0, 0)
+
+GLOWS = {"red": (255, 0, 0, 50),
+         "blue": (38, 247, 253, 50),
+         "green": (45, 254, 84, 50),
+         "purple": (191, 64, 191, 50)}
 
 # Flags & variables
 run_title: bool = True
@@ -35,6 +45,17 @@ counter_y: int = 0
 counter_edge: int = 0
 counter_paddle: int = 0 
 scorer: str = None
+first_collection: bool = True
+start_time: float = None
+end_time: float = None
+spawn_power_ups: bool = False
+start_clock: bool = True
+first_spawn: bool = True
+delay_start: float = None
+delay_end: float = None
+delay_elapsed: float = 0.0
+trigger_delay: bool = True
+counter = 0
 
 # Initialise pygame
 pygame.init()
@@ -257,66 +278,87 @@ class TextBox:
 
 class Paddle:
 
-    def __init__(self, image) -> None:
+    def __init__(self, image, colour: str) -> None:
 
         self.image = image
+        self.colour = colour
         self.rect = self.image.get_rect()
         self.mask = pygame.mask.from_surface(self.image)
 
         self.width = self.image.get_width()
         self.height = self.image.get_height()
         self.velocity = np.array([0, 0])
-        self.max_vel = np.array([800, 800])
         self.initial_pos = np.array([0,0])
         self.final_pos = np.array([0,0])
+
+        # Flag to disable movement if frozen:
+        self.frozen = False
+
+        # Flag to check if the power shot power up is active
+        self.power_shot = False
 
     # Procedure to move the paddle on the screen based on the user's mouse placement
 
     def move_paddle(self) -> None:
 
-        mouse_pos = pygame.mouse.get_pos()
+        # If the paddle is frozen, fix the paddle to its most recent position
+        if self.frozen:
 
-        # Convert to an array to make the position mutable
-        draw_pos = np.array([mouse_pos[0], mouse_pos[1]])
+            print("frozen")
+            draw_pos = self.final_pos
+            self.velocity = np.array([0, 0])
 
-        # Ensure that the paddle is drawn only in a valid position
-        # n.b. /2 is for the radial length
+        elif not self.frozen:
 
-        if mouse_pos[0] < (5 + int(self.width/2)):
-            draw_pos[0] = 5 + self.width / 2 
+            mouse_pos = pygame.mouse.get_pos()
 
-        elif mouse_pos[0] > (TABLE_WIDTH - int(self.width / 2) - 5):
-            draw_pos[0] = (TABLE_WIDTH - int(self.width / 2) - 5)
+            # Convert to an array to make the position mutable
+            draw_pos = np.array([mouse_pos[0], mouse_pos[1]])
 
-        if mouse_pos[1] < (TABLE_HEIGHT / 2 + int(self.width / 2)):
-            draw_pos[1] = (TABLE_HEIGHT / 2 + int(self.width / 2))
+            # Ensure that the paddle is drawn only in a valid position
+            # n.b. /2 is for the radial length
 
-        elif mouse_pos[1] > (TABLE_HEIGHT - int(self.width / 2)):
-            draw_pos[1] = (TABLE_HEIGHT - int(self.width / 2))
+            if mouse_pos[0] < (5 + int(self.width/2)):
+                draw_pos[0] = 5 + self.width / 2 
+
+            elif mouse_pos[0] > (TABLE_WIDTH - int(self.width / 2) - 5):
+                draw_pos[0] = (TABLE_WIDTH - int(self.width / 2) - 5)
+
+            if mouse_pos[1] < (TABLE_HEIGHT / 2 + int(self.width / 2)):
+                draw_pos[1] = (TABLE_HEIGHT / 2 + int(self.width / 2))
+
+            elif mouse_pos[1] > (TABLE_HEIGHT - int(self.width / 2)):
+                draw_pos[1] = (TABLE_HEIGHT - int(self.width / 2))
 
         # Ensure that the rectangular hitbox of the paddle aligns with the position of the paddle image currently
         self.rect.center = tuple(draw_pos)
-        pygame.draw.rect(screen, (0,0,0), self.rect, 1)
 
         screen.blit(self.image, (draw_pos[0]-self.width/2, draw_pos[1]-self.height/2))
 
     def determine_vel(self) -> None:
 
-        # Calculate the time that a frame lasts (n.b. 60 fps)
-        dt = 1 / 60
+        # If the paddle is not frozen, then calculate the paddle's speed
+        if not self.frozen:
 
-        # We will use vector properties to simplify and speed up calculations using numpy arrays
+            # Calculate the time that a frame lasts (n.b. 60 fps)
+            dt = 1 / 60
 
-        # Calculate the change in the x and y positions and calculate the instantaneous velocity of the paddle
-        dx_dy = self.final_pos - self.initial_pos
+            # We will use vector properties to simplify and speed up calculations using numpy arrays
 
-        self.velocity = dx_dy / dt
+            # Calculate the change in the x and y positions and calculate the instantaneous velocity of the paddle
+            dx_dy = self.final_pos - self.initial_pos
 
-        # Ensure that the velocity is an integer number
-        self.velocity = self.velocity.astype(int)
+            self.velocity = dx_dy / dt
 
-        self.initial_pos = self.final_pos
-        self.final_pos = np.array(list(pygame.mouse.get_pos())) # Convert back into an array for calculations
+            # Ensure that the velocity is an integer number
+            self.velocity = self.velocity.astype(int)
+
+            if self.power_shot == True:
+
+                self.velocity = self.velocity * 2
+
+            self.initial_pos = self.final_pos
+            self.final_pos = np.array(list(pygame.mouse.get_pos())) # Convert back into an array for calculations
 
     # def check_puck_collision(self, Puck: object) -> bool:
 
@@ -362,6 +404,8 @@ class Puck:
         image = pygame.image.load(image_file)
         self.image = pygame.transform.scale_by(image, scale)
         self.rect = self.image.get_rect()
+        self.glow_colour = (0, 0, 0, 0)
+        
         self.mask = pygame.mask.from_surface(self.image)
 
         self.position = np.array([282, 413]).astype(int)
@@ -371,7 +415,12 @@ class Puck:
         self.rect.center = tuple(self.position)
 
         self.velocity = np.array([0,0]).astype(int)
+        self.max_vel = 3000
         self.deceleration = 0.9999
+
+        self.test = False
+
+        # Flag to check for testing
 
     # Subroutine to reset the table after a goal has been scored
 
@@ -402,6 +451,11 @@ class Puck:
         self.position = self.position.astype(int)
         self.rect.center = tuple(self.position)
 
+        # Display the glow to identify who the shot stopper power up is active for IF ACTIVE
+        glow_surface = self.mask.to_surface(setcolor=self.glow_colour, unsetcolor=None)
+        glow_surface = pygame.transform.scale_by(glow_surface, 1.3)
+
+        screen.blit(glow_surface, (self.position[0] - int(glow_surface.get_width() / 2), self.position[1] - int(glow_surface.get_height() / 2)))
         screen.blit(self.image, (self.position[0] - int(self.width / 2), self.position[1] - int(self.height / 2)))
 
     def check_wall_collision(self, Computer_Goal: object, Player_Goal: object) -> tuple:
@@ -420,6 +474,15 @@ class Puck:
 
             comp_collided = self.rect.colliderect(Computer_Goal.rect)
             p_collided = self.rect.colliderect(Player_Goal.rect)
+
+            # If the goal is suspended due to the shot stopper power up, do not consider the hitbox of the suspended goal
+            if Computer_Goal.display == False:
+
+                comp_collided = False
+
+            elif Player_Goal.display == False:
+
+                p_collided = False
 
             # If one of the goals is collided with, check for goal collisions
             if comp_collided or p_collided:
@@ -509,6 +572,18 @@ class Puck:
         self.velocity = self.velocity * self.deceleration
         self.velocity = self.velocity.astype(int)
 
+        # To prevent the puck from moving too fast, cap its velocity
+        vel_magnitude = np.linalg.norm(self.velocity)
+
+        if vel_magnitude > self.max_vel:
+            
+            self.velocity = self.velocity / vel_magnitude * self.max_vel
+            self.velocity = self.velocity.astype(int)
+
+        if self.test:
+
+            self.velocity = np.array([0,0])
+
         
 
 # Class for the scoreboard
@@ -526,7 +601,8 @@ class Scoreboard:
         self.p_position: tuple = p_position
         self.comp_position: tuple = comp_position
 
-        self.multiplier = 1
+        self.p_multiplier = 1
+        self.comp_multiplier = 1
 
     def draw(self) -> None:
 
@@ -545,11 +621,11 @@ class Scoreboard:
 
         if player == "computer":
 
-            self.comp_score += self.multiplier
+            self.comp_score += self.comp_multiplier
 
         elif player == "player":
 
-            self.p_score += self.multiplier
+            self.p_score += self.p_multiplier
         
 class Goal:
 
@@ -560,8 +636,11 @@ class Goal:
         self.y = y
         self.player = player
 
-        self.rect = pygame.Rect(self.x, self.y, self.width, 100)
+        self.rect = pygame.Rect(self.x - self.width / 2, self.y, self.width, 100)
         self.mask = pygame.mask.Mask((self.rect.width, self.rect.height), True)
+
+        # Flag to check whether the goal is open
+        self.display = True
 
         if self.player == "computer":
 
@@ -576,7 +655,9 @@ class Goal:
 
     def draw(self) -> None:
 
-        pygame.draw.rect(screen, (0,0,0), self.rect)
+        if self.display:
+
+            pygame.draw.rect(screen, (0,0,0), self.rect)
 
     # Function to check and determine who has scored a goal
     def check_goal(self, Puck: object) -> str:
@@ -603,6 +684,259 @@ class Goal:
             else:
 
                 return None
+            
+class GridSquare:
+
+    def __init__(self, position: tuple):
+
+        self.is_obstacle: bool = False
+        self.is_target: bool = False
+        self.is_start: bool = False
+        self.is_discovered: bool = False
+        self.weight: int = 0
+
+        self.colour = BLACK
+
+        # We will initially set all undiscovered nodes to have infinite weight
+        self.f_cost: float = inf
+        self.g_cost: float = inf
+        self.h_cost: float = inf
+
+        self.pointer = np.array([None, None])
+        self.neighbours = []
+
+        # Each grid square will be 5x5 pixels in dimension
+        self.rect = pygame.Rect(position[0] * 5, position[1] * 5, 5, 5)
+
+    def draw(self) -> None:
+
+        if not self.is_obstacle and not self.is_start and not self.is_discovered and not self.is_target:
+
+            pygame.draw.rect(screen, self.colour, self.rect, 1)
+        
+        else:
+
+            if self.is_obstacle:
+                self.colour = BLACK
+
+            elif self.is_target:
+                self.colour = LIGHT_GREEN
+
+            elif self.is_start:
+                self.colour = BRIGHT_RED
+            
+            elif self.is_discovered:
+                self.colour = ORANGE
+
+
+            pygame.draw.rect(screen, self.colour, self.rect)
+
+
+
+
+# Power up class to contain all the different power up effects:
+
+class PowerUp:
+
+    def __init__(self, half_dimensions: tuple, player: str) -> None:
+
+        self.is_active = False
+        self.player = player
+
+        self.despawn = True
+
+        self.images = {"freeze": "icons/Power Ups/freeze.png",
+                       "shot_stopper": "icons/Power Ups/shot_stopper.png",
+                       "widen_goal": "icons/Power Ups/widen_goal.png",
+                       "double_points": "icons/Power Ups/double_points.png",
+                       "power_shot": "icons/Power Ups/power_shot.png",
+                       "enlarge_paddle": "icons/Power Ups/enlarge_paddle.png"}
+        
+        self.image = None
+
+        self.power_up = None
+        self.power_ups = ["freeze", "shot_stopper", "widen_goal", "double_points", "power_shot", "enlarge_paddle"]
+
+        # This will determine which part of the table that the power up can spawn in
+        self.half_dimensions = half_dimensions
+
+        # The power ups will be a circle of radius 15 - we will create a rectangular hitbox around the power up
+        self.rect = pygame.Rect(0, 0, 30, 30)
+
+        self.x = None
+        self.y = None
+
+        self.test = False
+
+    # Randomise the power up to be given and its spawn position
+    def randomise_spawn(self) -> None:
+
+        if self.test:
+
+            print("*** TEST MODE ***")
+            self.power_up = "power_shot"
+
+        elif not self.test:
+
+            # Choose a random power up from the selection:
+            self.power_up = choice(self.power_ups)
+
+        # Load the corresponding image and scale accordingly
+        image = pygame.image.load(self.images[self.power_up])
+        self.image = pygame.transform.scale(image, (30, 30))
+
+        # Randomly generate coordinates to spawn the power up in, accouting for the power up dimensions and walls of the table
+        self.x = randint(int(self.half_dimensions[0] + 10 + 15), int(self.half_dimensions[1] - 10 - 15))
+        self.y = randint(int(self.half_dimensions[2] + 10 + 15), int(self.half_dimensions[3] - 15))
+
+        # Reposition the hitbox of the power up and display the power up on the screen
+        self.rect.center = (self.x, self.y)
+
+    # Draw the power up on the screen
+    def draw(self) -> None:
+
+        screen.blit(self.image, (self.x - 15, self.y - 15))
+
+    # Subroutine to collect the power up:
+    def collect(self, Paddle: object) -> None:
+
+        paddle_x, paddle_y = Paddle.rect.center
+        distance = sqrt( (self.x - paddle_x) ** 2 + (self.y - paddle_y) ** 2)
+
+        # If the paddle intersects the power_up, then it has been collected
+        if distance < Paddle.width / 2 + 15:
+
+            self.is_active = True
+        
+        else:
+
+            self.is_active = False
+
+    def freeze(self, Paddle: object, optional=None) -> None:
+        
+        if self.is_active:
+
+            Paddle.frozen = True
+
+        else:
+
+            Paddle.frozen = False
+
+    def double_points(self, Scoreboard: object, optional=None) -> None:
+
+        if not self.is_active:
+
+            Scoreboard.p_multiplier = 1
+            Scoreboard.comp_multiplier = 1
+
+        elif self.is_active:
+
+            if self.player == "player":
+
+                Scoreboard.comp_multiplier = 2
+
+            elif self.player == "computer":
+
+                Scoreboard.p_multiplier = 2
+
+    # Subroutine to widen the goal if widen goal power up is active
+
+    def widen_goal(self, Goal: object, optional=None) -> None:
+
+        # Change the dimensions and hitbox of the goal if active
+        if self.is_active:
+
+            Goal.width = 300
+            Goal.rect = pygame.Rect(Goal.x - Goal.width / 2, Goal.y, Goal.width, 100)
+            Goal.mask = pygame.mask.Mask((Goal.rect.width, Goal.rect.height), True)
+            
+            if Goal.player == "computer":
+
+                Goal.left_corner = (Goal.rect.left, Goal.rect.bottom)
+                Goal.right_corner = (Goal.rect.right, Goal.rect.bottom)
+
+            elif Goal.player == "player":
+
+                Goal.left_corner = (Goal.rect.left, Goal.rect.top)
+                Goal.right_corner = (Goal.rect.right, Goal.rect.top)
+
+        # If this power up is not active, then reset the goal's hitbox
+        if not self.is_active:
+
+            Goal.width = 150
+            Goal.rect = pygame.Rect(Goal.x - Goal.width / 2, Goal.y, Goal.width, 100)
+            Goal.mask = pygame.mask.Mask((Goal.rect.width, Goal.rect.height), True)
+            
+            if Goal.player == "computer":
+
+                Goal.left_corner = (Goal.rect.left, Goal.rect.bottom)
+                Goal.right_corner = (Goal.rect.right, Goal.rect.bottom)
+
+            elif Goal.player == "player":
+
+                Goal.left_corner = (Goal.rect.left, Goal.rect.top)
+                Goal.right_corner = (Goal.rect.right, Goal.rect.top)
+
+    def enlarge_paddle(self, Paddle: object, optional=None) -> None:
+
+        # If the power up is active, enlarge the hitbox of the paddle
+        if self.is_active:
+
+            Paddle.image = pygame.transform.scale2x(Paddle.image)
+            Paddle.width = Paddle.image.get_width()
+            Paddle.height = Paddle.image.get_height()
+
+        # Otherwise, rescale the paddle's hitbox to what it was originally
+        if not self.is_active:
+
+            Paddle.image = pygame.transform.scale_by(Paddle.image, 0.5)
+            Paddle.width = Paddle.image.get_width()
+            Paddle.height = Paddle.image.get_height()
+
+    def shot_stopper(self, Paddle: object, Puck: object, Goal: object, Scoreboard: object) -> None:
+
+        if self.is_active:
+
+            Puck.glow_colour = GLOWS[Paddle.colour]
+            Goal.display = False
+            
+            # For the active player, double points if they score in the opponents goal while active
+            if Goal.player == "computer":
+
+                Scoreboard.p_multiplier = 2
+
+            if Goal.player == "player":
+
+                Scoreboard.comp_multiplier = 2
+
+        
+        elif not self.is_active:
+
+            # Reset to defaults
+
+            Puck.glow_colour = (0, 0, 0, 0)
+            Scoreboard.comp_multiplier = 1
+            Scoreboard.p_multiplier = 1
+            Goal.display = True
+        
+    def power_shot(self, Paddle: object, optional=None) -> None:
+
+        if self.is_active:
+
+            Paddle.power_shot = True
+
+        elif not self.is_active:
+
+            Paddle.power_shot = False     
+
+
+        
+
+        
+
+
+        
+
 
 
 # Instatiating objects
@@ -629,7 +963,7 @@ Play_Button = Button(position=(400,768), image_file="buttons/play_button.png", s
         
 Score_Input = TextBox(position=(400, 480), font_file="Fonts/Grand9K Pixel.ttf", font_size=50, user_input="10")
 
-Paddles = [Red_Paddle_Icon, Blue_Paddle_Icon, Green_Paddle_Icon, Purple_Paddle_Icon]
+Paddles = [(Red_Paddle_Icon, "red"), (Blue_Paddle_Icon, "blue"), (Green_Paddle_Icon, "green"), (Purple_Paddle_Icon, "purple")]
 Difficulties = [[Easy_Icon, Easy_Letters], [Medium_Icon, Medium_Letters], [Hard_Icon, Hard_Letters]]
 
 Scoreboard_Display = Scoreboard(p_position=(680,210), comp_position=(680,630), font_file="Fonts/Grand9K Pixel.ttf", font_size=100)
@@ -641,8 +975,51 @@ Puck_Display = Puck(image_file="red_puck.png", scale=0.4)
 TABLE_HEIGHT = Table_Display.height
 TABLE_WIDTH = Table_Display.width
 
-Comp_Goal = Goal(206, -90, "computer")
-Player_Goal = Goal(206, 830, "player")
+Comp_Goal = Goal(281, -90, "computer")
+Player_Goal = Goal(281, 830, "player")
+
+PlayerPowerUp = PowerUp((0, TABLE_WIDTH, TABLE_HEIGHT / 2, TABLE_HEIGHT), player="player")
+CompPowerUp = PowerUp((0, TABLE_WIDTH, 0, TABLE_HEIGHT / 2), player="computer")
+
+
+# Setting up the grid for pathfinding 
+
+def create_grid(Paddle: object) -> list:
+    
+    grid = []
+    
+    half_height = TABLE_HEIGHT / 2
+
+    # We will use grids that are 10x10 pixels in dimension
+
+    columns = int(half_height / 5)
+    rows = int((TABLE_WIDTH - 2) / 5)    # n.b -2 because the actual widht is 567 which would lead to a float
+
+    for row_number in range(rows):
+        
+        row = []
+
+        for column_number in range(columns):
+
+            row.append(GridSquare((row_number, column_number)))
+
+            # Account for the collision space of the paddle and the walls to prevent computer traversal out of bounds
+            
+            if (row_number * 5) <= (10 + Paddle.width / 2) or (row_number * 5) >= (TABLE_WIDTH - Paddle.width / 2): 
+
+                row[column_number].is_obstacle = True
+
+            if (column_number * 5) <= (10 + Paddle.width / 2) or (column_number * 5) >= (TABLE_HEIGHT / 2 - 10 - Paddle.width / 2):
+
+                row[column_number].is_obstacle = True
+
+        grid.append(row)
+
+    return grid
+
+
+
+
  
 
 
@@ -686,7 +1063,7 @@ if __name__ == "__main__":
             for icon in Difficulties[difficulty]:
                 icon.draw()
 
-            Paddles[paddle_colour].draw()
+            Paddles[paddle_colour][0].draw()
 
             # Keep track of the current settings and check whether button has been clicked
             if Right_Difficulty.draw():
@@ -743,95 +1120,193 @@ if __name__ == "__main__":
 
         while run_game == True:
 
-
-            Table_Display.draw(screen)
-            Scoreboard_Display.draw()
-            Puck_Display.update_pos()
-            # Puck_Display.test_puck()
-
-            if scorer:
-
-                scoring_sfx.play()
-                Scoreboard_Display.update_score(scorer)
-                Puck_Display.reset()
-                scorer = None
-                sleep(1)
-                continue
-        
-            # If the first run, instantiate the paddle, preventing reinstantiation every loop
+            # If the first run, instantiate the paddle and grid, preventing reinstantiation every loop
             if first_run:
 
-                paddle_image = Paddles[paddle_colour].image
-                User_Paddle = Paddle(paddle_image)
+                paddle_image = Paddles[paddle_colour][0].image
+                User_Paddle = Paddle(paddle_image, Paddles[paddle_colour][1])
                 first_run = False
+                grid = create_grid(User_Paddle)
 
-            User_Paddle.move_paddle()
-            User_Paddle.determine_vel()
-
-            paddle_collision = User_Paddle.check_puck_collision(Puck_Display)
-
-            if paddle_collision == True:
-
-                counter_paddle += 1
+                user_power_ups = {"freeze": [PlayerPowerUp.freeze, (User_Paddle, None)],
+                                  "double_points": [PlayerPowerUp.double_points, (Scoreboard_Display, None)],
+                                  "widen_goal": [PlayerPowerUp.widen_goal, (Comp_Goal, None)],
+                                  "enlarge_paddle": [PlayerPowerUp.enlarge_paddle, (User_Paddle, None)],
+                                  "shot_stopper": [PlayerPowerUp.shot_stopper, (User_Paddle, Puck_Display, Player_Goal, Scoreboard_Display)],
+                                  "power_shot": [PlayerPowerUp.power_shot, (User_Paddle, None)]}
                 
-                if counter_paddle > 1:
-
-                    paddle_collision = False
-
-            else:
-
-                counter_paddle = 0
-
-            x_collision, y_collision, goal_collision, collision_centre, goal_to_check = Puck_Display.check_wall_collision(Comp_Goal, Player_Goal)
-
-            # print(x_collision, y_collision, goal_collision, collision_centre)
-
-            # To prevent registering a wall collision multiple times before the puck has actually moved off of the wall
-
-            if x_collision == True:
-
-                counter_x += 1
-                
-                if counter_x > 1:
-
-                    x_collision = False
-
-            else:
-
-                counter_x = 0
-
-            if y_collision == True:
-
-                counter_y += 1
-                
-                if counter_y > 1:
-
-                    y_collision = False
-
-            else:
-
-                counter_y = 0
-
-            if goal_collision == True:
-
-                counter_edge += 1
-                
-                if counter_edge > 1:
-
-                    goal_collision = False
-
-            else:
-
-                counter_edge = 0
-
-            Puck_Display.update_velocity(User_Paddle, paddle_collision, x_collision, y_collision, goal_collision, collision_centre)
-
+            Table_Display.draw(screen)
+            Scoreboard_Display.draw()
             Comp_Goal.draw()
             Player_Goal.draw()
 
-            if goal_to_check:
+            # If we are not in the stage of spawning power ups, wait for 10 seconds until the next power up spawn
 
-                scorer = goal_to_check.check_goal(Puck_Display)
+            if not spawn_power_ups:
+
+                if start_clock:
+
+                    start_time = time()
+                    start_clock = False
+
+                else:
+
+                    end_time = time()
+                    elapsed = end_time - start_time
+
+                    if elapsed >= 10:
+
+                        spawn_power_ups = True
+                        start_clock = True
+
+            elif spawn_power_ups:
+
+                if first_spawn == True:
+
+                    PlayerPowerUp.randomise_spawn()
+                    CompPowerUp.randomise_spawn()
+                    first_spawn = False
+
+                # Only check for collection of the power up if the power up has not yet been collected
+                if not PlayerPowerUp.is_active and not CompPowerUp.is_active:
+                    PlayerPowerUp.draw()
+                    CompPowerUp.draw()
+                    PlayerPowerUp.collect(User_Paddle)
+                    CompPowerUp.collect(User_Paddle)
+
+                if PlayerPowerUp.is_active:
+
+                    print(PlayerPowerUp.power_up)
+                    # Retrieve the method and arguments
+                    power_up_call = user_power_ups[PlayerPowerUp.power_up]
+
+                    # If the power_up is just collected, start the timer
+                    if first_collection:
+
+                        first_collection = False
+                        start_time = time()
+
+                        # Call the method using the predetermined arguments
+                        power_up_call[0](*power_up_call[1])
+
+                    else:
+
+                        end_time = time()
+                        elapsed = end_time - start_time
+
+                        if elapsed >= 5:
+
+                            first_collection = True
+                            PlayerPowerUp.is_active = False
+                            spawn_power_ups = False
+                            first_spawn = True
+
+                            # Call the method using the predetermined arguments
+                            power_up_call[0](*power_up_call[1])
+                            
+
+            # for row in grid:
+
+            #     for square in row:
+
+            #         square.draw()
+
+            User_Paddle.move_paddle()
+
+            if scorer:
+
+                if trigger_delay == True:
+
+                    delay_start = time()
+                    scoring_sfx.play()
+                    Scoreboard_Display.update_score(scorer)
+                    trigger_delay = False
+
+                delay_end = time()
+                delay_elapsed = delay_end - delay_start
+                Puck_Display.velocity = np.array([0,0])
+
+                if delay_elapsed >= 2:
+
+                    scorer = None
+                    delay_elapsed = 0.0
+                    trigger_delay = True
+                    Puck_Display.reset()
+
+            else:
+
+                
+            
+                User_Paddle.determine_vel()
+
+                Puck_Display.update_pos()
+                # PlayerPowerUp.is_active = True
+                # Puck_Display.test = True
+                # Puck_Display.test_puck()
+                
+
+                paddle_collision = User_Paddle.check_puck_collision(Puck_Display)
+
+                if paddle_collision == True:
+
+                    counter_paddle += 1
+                    
+                    if counter_paddle > 1:
+
+                        paddle_collision = False
+
+                else:
+
+                    counter_paddle = 0
+
+                x_collision, y_collision, goal_collision, collision_centre, goal_to_check = Puck_Display.check_wall_collision(Comp_Goal, Player_Goal)
+                # print(x_collision, y_collision, goal_collision, collision_centre, goal_to_check)
+
+                # print(x_collision, y_collision, goal_collision, collision_centre)
+
+                # To prevent registering a wall collision multiple times before the puck has actually moved off of the wall
+
+                if x_collision == True:
+
+                    counter_x += 1
+                    
+                    if counter_x > 1:
+
+                        x_collision = False
+
+                else:
+
+                    counter_x = 0
+
+                if y_collision == True:
+
+                    counter_y += 1
+                    
+                    if counter_y > 1:
+
+                        y_collision = False
+
+                else:
+
+                    counter_y = 0
+
+                if goal_collision == True:
+
+                    counter_edge += 1
+                    
+                    if counter_edge > 1:
+
+                        goal_collision = False
+
+                else:
+
+                    counter_edge = 0
+
+                Puck_Display.update_velocity(User_Paddle, paddle_collision, x_collision, y_collision, goal_collision, collision_centre)
+
+                if goal_to_check:
+
+                    scorer = goal_to_check.check_goal(Puck_Display)
                 
 
             # Check whether a goal in this frame
@@ -841,8 +1316,6 @@ if __name__ == "__main__":
             # if scorer != None:
 
             #     print(scorer)
-
-
 
             for event in pygame.event.get():
 
