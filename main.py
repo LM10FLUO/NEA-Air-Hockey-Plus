@@ -55,7 +55,8 @@ delay_start: float = None
 delay_end: float = None
 delay_elapsed: float = 0.0
 trigger_delay: bool = True
-counter = 0
+counter: int = 0
+computer_counter: int = 0 
 
 # Initialise pygame
 pygame.init()
@@ -296,6 +297,7 @@ class Paddle:
 
         # Flag to check if the power shot power up is active
         self.power_shot = False
+        self.position_reset = False
 
     # Procedure to move the paddle on the screen based on the user's mouse placement
 
@@ -351,7 +353,7 @@ class Paddle:
             self.velocity = dx_dy / dt
 
             # Ensure that the velocity is an integer number
-            self.velocity = self.velocity.astype(int)
+            self.velocity = np.round(self.velocity, decimals=0)
 
             if self.power_shot == True:
 
@@ -409,6 +411,7 @@ class Puck:
         self.mask = pygame.mask.from_surface(self.image)
 
         self.position = np.array([282, 413]).astype(int)
+        self.previous_pos = np.array([282, 413]).astype(int)
         self.height = self.image.get_height()
         self.width = self.image.get_width()
 
@@ -419,8 +422,41 @@ class Puck:
         self.deceleration = 0.9999
 
         self.test = False
+        self.top_left_valid = ( 5 + int(self.width / 2) , 5 + int(self.width / 2) )
+        self.bottom_right_valid = ( TABLE_WIDTH - int(self.width / 2) - 5, TABLE_HEIGHT - int(self.width / 2) - 5 )
+
 
         # Flag to check for testing
+
+    def check_stuck(self, Computer_Goal: object, Player_Goal: object) -> tuple:
+
+        left_stuck = False
+        right_stuck = False
+        top_stuck = False
+        bottom_stuck = False
+
+        # If the puck is stuck on the wall of the table without moving off it, return that the puck is stuck
+
+        if not self.rect.colliderect(Computer_Goal.rect) and not self.rect.colliderect(Player_Goal.rect):
+
+            if self.position[0] == self.top_left_valid[0] and self.velocity[0] <= 0:
+
+                left_stuck = True
+
+            elif self.position[0] == self.bottom_right_valid[0] and self.velocity[0] >= 0: 
+
+                right_stuck = True
+
+            if self.position[1] == self.top_left_valid[1] and self.velocity[1] <= 0:
+
+                top_stuck = True
+
+            elif self.position[1] == self.bottom_right_valid[1] and self.velocity[1] >= 0: 
+
+                bottom_stuck = True
+
+        return left_stuck, right_stuck, top_stuck, bottom_stuck
+
 
     # Subroutine to reset the table after a goal has been scored
 
@@ -436,29 +472,76 @@ class Puck:
         mouse_pos = pygame.mouse.get_pos()
 
         # Ensure that the rectangular hitbox of the puck aligns with the position of the puck image currently
-        self.rect.center = tuple(mouse_pos)
+        self.rect.center = mouse_pos
+        self.position = mouse_pos
         pygame.draw.rect(screen, (0,0,0), self.rect, 1)
 
         screen.blit(self.image, (mouse_pos[0]-self.width/2, mouse_pos[1]-self.height/2))
 
     # Subroutine to update the position of the puck and move it accordingly
 
-    def update_pos(self) -> None:
+    def update_pos(self, Computer_Goal: object, Player_Goal: object, temp_velocity: np.ndarray = None, temp_position: np.ndarray = None) -> np.ndarray:
+
+        # Check if a velocity is passed so that we can reuse this function for predicting position
+        if temp_velocity is None:
+
+            puck_velocity = self.velocity
+            position = self.position
+
+        else:
+
+            puck_velocity = temp_velocity
+            position = temp_position
+    
 
         # Calculate the distance that the puck should move in the time the frame lasts
         dt = 1 / 60
-        self.position = self.position + dt * self.velocity
-        self.position = self.position.astype(int)
-        self.rect.center = tuple(self.position)
+        position = position + dt * puck_velocity
+        # print(f"Unrounded position is {position}")
+        position = np.round(position, decimals=0)
 
-        # Display the glow to identify who the shot stopper power up is active for IF ACTIVE
-        glow_surface = self.mask.to_surface(setcolor=self.glow_colour, unsetcolor=None)
-        glow_surface = pygame.transform.scale_by(glow_surface, 1.3)
+        if temp_velocity is None:
 
-        screen.blit(glow_surface, (self.position[0] - int(glow_surface.get_width() / 2), self.position[1] - int(glow_surface.get_height() / 2)))
-        screen.blit(self.image, (self.position[0] - int(self.width / 2), self.position[1] - int(self.height / 2)))
+            self.position = position
 
-    def check_wall_collision(self, Computer_Goal: object, Player_Goal: object) -> tuple:
+            # Display the glow to identify who the shot stopper power up is active for IF ACTIVE
+            glow_surface = self.mask.to_surface(setcolor=self.glow_colour, unsetcolor=None)
+            glow_surface = pygame.transform.scale_by(glow_surface, 1.3)
+
+            # Check if the puck is within the bounds of the table as long as it is not entering the goal 
+
+            if not self.rect.colliderect(Computer_Goal.rect) and not self.rect.colliderect(Player_Goal.rect):
+
+                if self.position[0] < self.top_left_valid[0]:
+
+                    self.position[0] = self.top_left_valid[0]
+
+                elif self.position[0] > self.bottom_right_valid[0]:
+
+                    self.position[0] = self.bottom_right_valid[0]
+
+                if self.position[1] < self.top_left_valid[1]:
+
+                    self.position[1] = self.top_left_valid[1]
+
+                elif self.position[1] > self.bottom_right_valid[1]:
+
+                    self.position[1] = self.bottom_right_valid[1]
+
+
+            self.rect.center = tuple(self.position)
+            pygame.draw.rect(screen, (0,0,0), self.rect, 1)
+
+            screen.blit(glow_surface, (self.position[0] - int(glow_surface.get_width() / 2), self.position[1] - int(glow_surface.get_height() / 2)))
+            screen.blit(self.image, (self.position[0] - int(self.width / 2), self.position[1] - int(self.height / 2)))
+
+            # self.rect.center = tuple(self.position)
+
+        return position
+
+    
+
+    def check_wall_collision(self, Computer_Goal: object, Player_Goal: object, temp_position: np.ndarray = None) -> tuple:
 
         x_collision: bool = False
         y_collision: bool = False
@@ -466,14 +549,28 @@ class Puck:
         collision_centre: tuple = (0,0)
         goal_to_check: object = None
 
+        # Check if a position is passed so that we can reuse this function for predicting position
+
+        if temp_position is None:
+
+            puck_position = self.position
+            temp_rect = self.rect
+
+        else:
+
+            puck_position = temp_position
+            temp_rect = self.image.get_rect()
+
+        temp_rect.center = puck_position
+
         # Check whether the puck exceeds the area of the table
-        if self.rect.left <= 9 or self.rect.right >= (TABLE_WIDTH - 9):
+        if temp_rect.left <= 9 or temp_rect.right >= (TABLE_WIDTH - 9):
             x_collision = True
 
-        if self.rect.top <= 9 or self.rect.bottom >= (TABLE_HEIGHT - 9):
+        if temp_rect.top <= 9 or temp_rect.bottom >= (TABLE_HEIGHT - 9):
 
-            comp_collided = self.rect.colliderect(Computer_Goal.rect)
-            p_collided = self.rect.colliderect(Player_Goal.rect)
+            comp_collided = temp_rect.colliderect(Computer_Goal.rect)
+            p_collided = temp_rect.colliderect(Player_Goal.rect)
 
             # If the goal is suspended due to the shot stopper power up, do not consider the hitbox of the suspended goal
             if Computer_Goal.display == False:
@@ -496,8 +593,8 @@ class Puck:
                     Goal = Player_Goal
 
                 # We will check whether the distance to the corner of the goal is <= radius to check for collision inside the goal
-                distance_left = sqrt( (Goal.left_corner[0] - self.rect.center[0])**2 + (Goal.left_corner[1] - self.rect.center[1])**2 ) 
-                distance_right = sqrt( (Goal.right_corner[0] - self.rect.center[0])**2 + (Goal.right_corner[1] - self.rect.center[1])**2 )
+                distance_left = sqrt( (Goal.left_corner[0] - temp_rect.center[0])**2 + (Goal.left_corner[1] - temp_rect.center[1])**2 ) 
+                distance_right = sqrt( (Goal.right_corner[0] - temp_rect.center[0])**2 + (Goal.right_corner[1] - temp_rect.center[1])**2 )
 
                 # To ensure a correct collision, ensure that the puck approaches from the correct side to register a collision
                 if distance_left <= (self.width / 2) + 1 and self.velocity[0] <= 0:
@@ -524,9 +621,20 @@ class Puck:
 
     # Subroutine to update the velocity of the puck based on its interactions on the table 
 
-    def update_velocity(self, Paddle: object, paddle_collision: bool, x_collision: bool, y_collsion: bool, 
-                        goal_collision: bool, collision_centre) -> None:
+    def update_velocity(self, Paddle: object, paddle_collision: bool, x_collision: bool, y_collision: bool, 
+                        goal_collision: bool, collision_centre: np.ndarray, Player_Goal: object, Computer_Goal: object,
+                        temp_velocity: np.ndarray = None) -> np.ndarray:
 
+        # So that we can extend this function to predict the position of the puck, we will have an optional parameter to base the velocity off of
+
+        if temp_velocity is None:
+
+            puck_velocity = self.velocity
+
+        else:
+
+            puck_velocity = temp_velocity
+            
         if paddle_collision == True:
 
             # Determine the normal to the paddle to reflect the puck off of
@@ -537,10 +645,8 @@ class Puck:
             unit_normal = normal / magnitude
 
             # Calculate the new velocity of the puck
-            self.velocity = self.velocity - 2 * np.dot(self.velocity-Paddle.velocity, unit_normal) * unit_normal
-            self.velocity = self.velocity.astype(int)
-
-            collision_sfx.play()
+            puck_velocity = puck_velocity - 2 * np.dot(puck_velocity-Paddle.velocity, unit_normal) * unit_normal
+            puck_velocity = np.round(puck_velocity, decimals=0)
 
         if goal_collision == True:
 
@@ -552,37 +658,127 @@ class Puck:
             unit_normal = normal / magnitude
             
             # Reflect the puck's movement
-            self.velocity = self.velocity - 2 * np.dot(self.velocity, unit_normal) * unit_normal
-            self.velocity = self.velocity.astype(int)
-
-            collision_sfx.play()
+            puck_velocity = puck_velocity - 2 * np.dot(puck_velocity, unit_normal) * unit_normal
+            puck_velocity = np.round(puck_velocity, decimals=0)
 
         if x_collision == True:
 
-            self.velocity[0] = int(-self.velocity[0] * 0.9)
-            collision_sfx.play()
+            puck_velocity[0] = int(-puck_velocity[0] * 0.9)
 
         if y_collision == True:
 
-            self.velocity[1] = int(-self.velocity[1] * 0.9)
-            collision_sfx.play()
+            puck_velocity[1] = int(-puck_velocity[1] * 0.9)
 
         # Decellerate the puck due to friction
 
-        self.velocity = self.velocity * self.deceleration
-        self.velocity = self.velocity.astype(int)
+        puck_velocity = puck_velocity * self.deceleration
+        puck_velocity = np.round(puck_velocity, decimals=0)
+
+        left_stuck, right_stuck, top_stuck, bottom_stuck = self.check_stuck(Computer_Goal=Computer_Goal, Player_Goal=Player_Goal)
+
+        if left_stuck:
+
+            puck_velocity[0] = 50
+
+        if right_stuck:
+
+            puck_velocity[0] = -50
+
+        if top_stuck:
+
+            puck_velocity[1] = 50
+
+        if bottom_stuck:
+
+            puck_velocity[1] = -50
 
         # To prevent the puck from moving too fast, cap its velocity
-        vel_magnitude = np.linalg.norm(self.velocity)
+        vel_magnitude = np.linalg.norm(puck_velocity)
 
         if vel_magnitude > self.max_vel:
             
-            self.velocity = self.velocity / vel_magnitude * self.max_vel
-            self.velocity = self.velocity.astype(int)
+            puck_velocity = puck_velocity / vel_magnitude * self.max_vel
+            puck_velocity = np.round(puck_velocity, decimals=0)
 
         if self.test:
 
-            self.velocity = np.array([0,0])
+            puck_velocity = np.array([0,0])
+
+        # If the velocity was not given, update the actual velocity of the puck
+        if temp_velocity is None:
+
+            self.velocity = puck_velocity
+
+
+        return puck_velocity
+    
+    # Subroutine to predict the position of the puck a few frames ahead
+
+    def predict_pos(self, Computer_Goal: object, Player_Goal: object) -> np.ndarray:
+
+        # We want to calculate the distance travelled per frame - at 60 fps, this means a frame runs for 1/60 of a second
+        dt = 1 / 60
+
+        # Flags for keeping track of whether collisions have already been registered and accounted for
+
+        counter_x = 0
+        counter_y = 0
+        counter_edge = 0
+
+        # As we only want to predict the position, we will hold velocity and position temporarily as to not move the actual puck
+        current_velocity = self.velocity.copy()
+        new_position = self.position.copy()
+
+        # We will be predicting 5 frames ahead to give the computer some "reaction time" to the movement of the puck
+        for i in range(5):
+
+            # Check if there are any collisions in this new position to correctly predict the velocity and future puck position
+            x_collision, y_collision, goal_collision, collision_centre, goal_to_check = self.check_wall_collision(Computer_Goal=Computer_Goal, 
+                                                                                                                  Player_Goal=Player_Goal, 
+                                                                                                                  temp_position=new_position)
+            if x_collision == True:
+
+                counter_x += 1
+                
+                if counter_x > 1:
+
+                    x_collision = False
+
+            else:
+
+                counter_x = 0
+
+            if y_collision == True:
+
+                counter_y += 1
+                
+                if counter_y > 1:
+
+                    y_collision = False
+
+            else:
+
+                counter_y = 0
+
+            if goal_collision == True:
+
+                counter_edge += 1
+                
+                if counter_edge > 1:
+
+                    goal_collision = False
+
+            else:
+
+                counter_edge = 0
+            
+            current_velocity = self.update_velocity(Paddle=None, paddle_collision=False, x_collision=x_collision, 
+                                                    y_collision=y_collision, goal_collision=goal_collision, collision_centre=collision_centre,
+                                                    Computer_Goal=Computer_Goal, Player_Goal=Player_Goal, temp_velocity=current_velocity)
+            
+            new_position = self.update_pos(Computer_Goal=Computer_Goal, Player_Goal=Player_Goal, temp_velocity=current_velocity, temp_position=new_position)
+
+        return new_position
 
         
 
@@ -929,13 +1125,180 @@ class PowerUp:
 
             Paddle.power_shot = False     
 
+# We will create the classes for the computer's gameplay
 
+class Computer_Easy:
+
+    def __init__(self, image_file: str):
+
+        image = pygame.image.load(image_file)
+        self.image = pygame.transform.scale_by(image, 0.5)
+    
+        self.rect = self.image.get_rect()
+        self.mask = pygame.mask.from_surface(self.image)
+
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
+        self.vel_magnitude = 100
+        self.velocity = np.array([0,0])
+        self.position = np.array([282, 150])
+
+        self.colour = "blue"
+
+        # Flag to disable movement if frozen:
+        self.frozen = False
+
+        # Flag to check if the power shot power up is active
+        self.power_shot = False
+
+    # The puck collision method will remain the same as the Paddle class
+
+    def check_puck_collision(self, Puck: object) -> bool:
+
+        x_pos, y_pos = self.rect.center
+        paddle_radius = self.width / 2
+        puck_x, puck_y = Puck.rect.center
+        puck_radius = Puck.width / 2
+
+        distance = sqrt((puck_x - x_pos)**2 + (puck_y - y_pos)**2)
+
+        if distance <= (puck_radius + paddle_radius):
+
+            return True
         
+        else:
 
-        
+            return False
+    
+    # Subroutine to move the computer paddle
+    def move_paddle(self, Puck: object, Computer_Goal: object, Player_Goal: object) -> None:
+
+        # If frozen, prevent the paddle from moving
+
+        if self.frozen:
+
+            self.velocity = np.array([0,0])
+
+        elif not self.frozen:
+
+            # Time a frame lasts to calculate the maximum distance the computer can travel in a frame
+            dt = 1 / 60
+            self.vel_magnitude = 500
+            avoid = False   # Flag to determine whether the puck is likely to get trapped
+
+            # Work out the direction needed to move the paddle in to meet the puck
+            predicted_pos = Puck.predict_pos(Computer_Goal, Player_Goal)
 
 
-        
+            # If the puck is going to be cornered, force the computer to move away from the puck, adding a buffer to give the paddle time to move out the way
+
+            if (Puck.position[0] <= Puck.top_left_valid[0] + 10 or Puck.position[0] >= Puck.bottom_right_valid[0] - 10 
+                or Puck.position[1] <= Puck.top_left_valid[1] + 10):
+
+                avoid = True
+                predicted_pos = np.array([282,150])
+            
+            # Calculate the velocity the computer needs to travel at to move towards the puck
+            direction_vector = predicted_pos - self.position
+            direction_magnitude = np.linalg.norm(direction_vector)
+            self.velocity = (self.vel_magnitude / direction_magnitude) * direction_vector
+            self.velocity = np.round(self.velocity, decimals=0)
+
+            # Update the position of the paddle
+            
+            # Save previous conditions and attributes to reset if problematic movement is detected
+            previous_puck_collision = self.check_puck_collision(Puck)
+            previous_position = self.position.copy()
+
+            self.position = self.position + self.velocity * dt
+            self.position = np.round(self.position, decimals=0)
+            self.rect.center = tuple(self.position)
+
+            # Check if the new position forces repeated collision with the puck which could cause the puck to get stuck
+            new_puck_collision = self.check_puck_collision(Puck)
+
+            # If the new position continues to register a collision, reset position so that it avoids problematic interactions
+            if new_puck_collision and previous_puck_collision and avoid == False:
+
+                self.position = previous_position
+                self.rect.center = tuple(self.position)
+
+            else:
+
+                if self.position[0] < (5 + int(self.width/2)):
+                    self.position[0] = 5 + int(self.width / 2) 
+
+                elif self.position[0] > (TABLE_WIDTH - int(self.width / 2) - 5):
+                    self.position[0] = (TABLE_WIDTH - int(self.width / 2) - 5)
+
+                if self.position[1] < (5 + int(self.width/2)):
+                    self.position[1] = (5 + int(self.width/2))
+
+                elif self.position[1] > (TABLE_HEIGHT / 2 - int(self.width / 2)):
+                    self.position[1] = (TABLE_HEIGHT / 2 - int(self.width / 2))
+
+            
+
+    def reset(self) -> None:
+
+        self.position = np.array([282, 150])
+        self.velocity = np.array([0,0])
+
+    def draw(self, Puck: object) -> None:
+
+        screen.blit(self.image, (self.position[0]-self.width/2, self.position[1]-self.height/2))
+
+    def hold_position(self, Puck: object) -> None:
+
+        if not self.frozen:
+
+            dt = 1 / 60
+
+            distance_y = 0
+            self.vel_magnitude = 200
+
+            # Track the x-coordinate of the puck to anticipate its movement
+            distance_x = Puck.position[0] - self.position[0]
+            self.velocity[0] = distance_x / dt
+
+            # while the puck is not in the computer half, make it back to the centre line to anticipate the puck's movement
+            if self.position[1] != 150:
+
+                self.vel_magnitude = 500
+                distance_y = 150 - self.position[1]
+                self.velocity[1] = distance_y / dt
+
+            vel_magnitude = np.linalg.norm(self.velocity)
+
+            if vel_magnitude == 0:
+
+                self.velocity = np.array([0,0])
+
+            else:
+
+                self.velocity = self.velocity / vel_magnitude * self.vel_magnitude
+                self.velocity = np.round(self.velocity, decimals=0)
+
+            # Update the velocity accordingly
+            self.position = self.position + self.velocity * dt
+            self.position = np.round(self.position, decimals=0)
+
+            # Check the direction the paddle is moving back to the centre position
+
+            if distance_y <= 0:
+
+                if self.position[1] <= 150:
+
+                    self.position[1] = 150
+
+            if distance_y >= 0:
+
+                if self.position[1] >= 150:
+                    
+                    self.position[1] = 150
+
+            self.rect.center = tuple(self.position)
+
 
 
 
@@ -970,10 +1333,12 @@ Scoreboard_Display = Scoreboard(p_position=(680,210), comp_position=(680,630), f
 
 Table_Display = Table()
 
-Puck_Display = Puck(image_file="red_puck.png", scale=0.4)
-
 TABLE_HEIGHT = Table_Display.height
 TABLE_WIDTH = Table_Display.width
+
+Puck_Display = Puck(image_file="red_puck.png", scale=0.4)
+print(Puck_Display.top_left_valid)
+print(Puck_Display.bottom_right_valid)
 
 Comp_Goal = Goal(281, -90, "computer")
 Player_Goal = Goal(281, 830, "player")
@@ -1119,21 +1484,32 @@ if __name__ == "__main__":
             clock.tick(60)
 
         while run_game == True:
+            
+            print(Puck_Display.position) 
+            print(Puck_Display.velocity)
 
             # If the first run, instantiate the paddle and grid, preventing reinstantiation every loop
             if first_run:
 
                 paddle_image = Paddles[paddle_colour][0].image
                 User_Paddle = Paddle(paddle_image, Paddles[paddle_colour][1])
+                Computer_Paddle = Computer_Easy("icons/blue_paddle.png")
                 first_run = False
                 grid = create_grid(User_Paddle)
 
-                user_power_ups = {"freeze": [PlayerPowerUp.freeze, (User_Paddle, None)],
+                user_power_ups = {"freeze": [PlayerPowerUp.freeze, (Computer_Paddle, None)],
                                   "double_points": [PlayerPowerUp.double_points, (Scoreboard_Display, None)],
                                   "widen_goal": [PlayerPowerUp.widen_goal, (Comp_Goal, None)],
                                   "enlarge_paddle": [PlayerPowerUp.enlarge_paddle, (User_Paddle, None)],
                                   "shot_stopper": [PlayerPowerUp.shot_stopper, (User_Paddle, Puck_Display, Player_Goal, Scoreboard_Display)],
                                   "power_shot": [PlayerPowerUp.power_shot, (User_Paddle, None)]}
+                
+                comp_power_ups = {"freeze": [CompPowerUp.freeze, (User_Paddle, None)],
+                                  "double_points": [CompPowerUp.double_points, (Scoreboard_Display, None)],
+                                  "widen_goal": [CompPowerUp.widen_goal, (Player_Goal, None)],
+                                  "enlarge_paddle": [CompPowerUp.enlarge_paddle, (Computer_Paddle, None)],
+                                  "shot_stopper": [CompPowerUp.shot_stopper, (Computer_Paddle, Puck_Display, Comp_Goal, Scoreboard_Display)],
+                                  "power_shot": [CompPowerUp.power_shot, (Computer_Paddle, None)]}
                 
             Table_Display.draw(screen)
             Scoreboard_Display.draw()
@@ -1172,11 +1548,10 @@ if __name__ == "__main__":
                     PlayerPowerUp.draw()
                     CompPowerUp.draw()
                     PlayerPowerUp.collect(User_Paddle)
-                    CompPowerUp.collect(User_Paddle)
+                    CompPowerUp.collect(Computer_Paddle)
 
                 if PlayerPowerUp.is_active:
 
-                    print(PlayerPowerUp.power_up)
                     # Retrieve the method and arguments
                     power_up_call = user_power_ups[PlayerPowerUp.power_up]
 
@@ -1198,6 +1573,35 @@ if __name__ == "__main__":
 
                             first_collection = True
                             PlayerPowerUp.is_active = False
+                            spawn_power_ups = False
+                            first_spawn = True
+
+                            # Call the method using the predetermined arguments
+                            power_up_call[0](*power_up_call[1])
+
+                elif CompPowerUp.is_active:
+
+                    # Retrieve the method and arguments
+                    power_up_call = comp_power_ups[CompPowerUp.power_up]
+
+                    # If the power_up is just collected, start the timer
+                    if first_collection:
+
+                        first_collection = False
+                        start_time = time()
+
+                        # Call the method using the predetermined arguments
+                        power_up_call[0](*power_up_call[1])
+
+                    else:
+
+                        end_time = time()
+                        elapsed = end_time - start_time
+
+                        if elapsed >= 5:
+
+                            first_collection = True
+                            CompPowerUp.is_active = False
                             spawn_power_ups = False
                             first_spawn = True
 
@@ -1225,6 +1629,7 @@ if __name__ == "__main__":
                 delay_end = time()
                 delay_elapsed = delay_end - delay_start
                 Puck_Display.velocity = np.array([0,0])
+                Computer_Paddle.draw(Puck_Display)
 
                 if delay_elapsed >= 2:
 
@@ -1232,24 +1637,56 @@ if __name__ == "__main__":
                     delay_elapsed = 0.0
                     trigger_delay = True
                     Puck_Display.reset()
+                    Computer_Paddle.reset()
 
             else:
 
-                
+            
             
                 User_Paddle.determine_vel()
 
-                Puck_Display.update_pos()
+                Puck_Display.update_pos(Comp_Goal, Player_Goal)
                 # PlayerPowerUp.is_active = True
                 # Puck_Display.test = True
                 # Puck_Display.test_puck()
                 
-
                 paddle_collision = User_Paddle.check_puck_collision(Puck_Display)
+                comp_paddle_collision = Computer_Paddle.check_puck_collision(Puck_Display)
 
-                if paddle_collision == True:
+                # Depending on the position of the puck, move the computer paddle accordingly
+
+                if Puck_Display.position[1] > TABLE_HEIGHT / 2:
+
+                    Computer_Paddle.hold_position(Puck_Display)
+
+
+                else:
+
+                    # Slow down the paddle if a collision occurs 
+
+                    if comp_paddle_collision:
+
+                        computer_counter = 0
+
+                    else:
+
+                        Computer_Paddle.vel_magnitude = 10
+
+                        computer_counter += 1
+
+                        if computer_counter >= 30:
+
+                            Computer_Paddle.vel_magnitude = 200
+
+                    Computer_Paddle.move_paddle(Puck_Display, Comp_Goal, Player_Goal)
+
+                Computer_Paddle.draw(Puck_Display)
+
+
+                if paddle_collision or comp_paddle_collision == True:
 
                     counter_paddle += 1
+                    collision_sfx.play()
                     
                     if counter_paddle > 1:
 
@@ -1259,16 +1696,16 @@ if __name__ == "__main__":
 
                     counter_paddle = 0
 
+
                 x_collision, y_collision, goal_collision, collision_centre, goal_to_check = Puck_Display.check_wall_collision(Comp_Goal, Player_Goal)
                 # print(x_collision, y_collision, goal_collision, collision_centre, goal_to_check)
-
-                # print(x_collision, y_collision, goal_collision, collision_centre)
 
                 # To prevent registering a wall collision multiple times before the puck has actually moved off of the wall
 
                 if x_collision == True:
 
                     counter_x += 1
+                    collision_sfx.play()
                     
                     if counter_x > 1:
 
@@ -1281,6 +1718,7 @@ if __name__ == "__main__":
                 if y_collision == True:
 
                     counter_y += 1
+                    collision_sfx.play()
                     
                     if counter_y > 1:
 
@@ -1293,6 +1731,7 @@ if __name__ == "__main__":
                 if goal_collision == True:
 
                     counter_edge += 1
+                    collision_sfx.play()
                     
                     if counter_edge > 1:
 
@@ -1302,12 +1741,21 @@ if __name__ == "__main__":
 
                     counter_edge = 0
 
-                Puck_Display.update_velocity(User_Paddle, paddle_collision, x_collision, y_collision, goal_collision, collision_centre)
+                if comp_paddle_collision:
+                
+                    print("Computer collision")
+                    Puck_Display.update_velocity(Computer_Paddle, comp_paddle_collision, x_collision, y_collision, goal_collision, 
+                                                 collision_centre, Player_Goal, Comp_Goal)
+
+                else:
+
+                    Puck_Display.update_velocity(User_Paddle, paddle_collision, x_collision, y_collision, goal_collision, 
+                                                 collision_centre, Player_Goal, Comp_Goal)
 
                 if goal_to_check:
 
                     scorer = goal_to_check.check_goal(Puck_Display)
-                
+
 
             # Check whether a goal in this frame
 
@@ -1336,4 +1784,6 @@ if __name__ == "__main__":
 
                 pygame.quit()
                 exit()
+
+    
 
