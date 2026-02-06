@@ -6,6 +6,14 @@ from math import sqrt, inf
 from time import sleep, time
 from random import randint, choice
 
+# Importing my python classes
+from heap_classes import Heap
+import goal_classes
+import puck_classes
+import paddle_classes
+import power_up_classes
+import computer_classes
+
 # Audio setup
 pygame.mixer.init()
 collision_sfx = pygame.mixer.Sound("Audio/collision_sfx (1)-[AudioTrimmer.com].mp3")
@@ -306,7 +314,6 @@ class Paddle:
         # If the paddle is frozen, fix the paddle to its most recent position
         if self.frozen:
 
-            print("frozen")
             draw_pos = self.final_pos
             self.velocity = np.array([0, 0])
 
@@ -530,7 +537,7 @@ class Puck:
 
 
             self.rect.center = tuple(self.position)
-            pygame.draw.rect(screen, (0,0,0), self.rect, 1)
+            # pygame.draw.rect(screen, (0,0,0), self.rect, 1)
 
             screen.blit(glow_surface, (self.position[0] - int(glow_surface.get_width() / 2), self.position[1] - int(glow_surface.get_height() / 2)))
             screen.blit(self.image, (self.position[0] - int(self.width / 2), self.position[1] - int(self.height / 2)))
@@ -969,7 +976,6 @@ class PowerUp:
 
         if self.test:
 
-            print("*** TEST MODE ***")
             self.power_up = "power_shot"
 
         elif not self.test:
@@ -1299,6 +1305,81 @@ class Computer_Easy:
 
             self.rect.center = tuple(self.position)
 
+# To create the medium difficulty bot, I will be inheriting from the Computer_Easy Class
+
+class Computer_Medium(Computer_Easy):
+
+    def __init__(self, image_file: str) -> None:
+
+        super().__init__(image_file)
+
+    def find_path(self, start_node: object, target_node: object):
+
+        # Open list - these are the nodes yet to be explored
+        # This will use a min heap priority queue to efficiently explore the next node with minimum f cost
+        open = Heap(np.full(100, None))
+
+        # Closed list for already discovered nodes
+        closed = []
+
+        current_node = start_node
+
+        while current_node is not None:
+
+            if target_node in current_node.neighbours:
+
+                target_node.pointer = current_node
+                current_node = None
+                continue
+
+            else:
+
+                for neighbour in current_node.neighbours:
+
+                    # Ignore any obstacle squares - we cannot traverse these
+                    if neighbour.is_obstacle == True:
+
+                        continue
+
+                    else:
+
+                        # The g_cost will also include a weight, indicating whether this square is a preferred route
+                        g_cost = current_node.g_cost + neighbour.weight + (neighbour.centre - current_node.rect.centre)
+
+                        # As the h_cost is constant, instead of comparing f_costs, we can just compare g_costs of the previous and current paths
+                        # If the g_cost of the current path is lower, a better path to this square has been found
+                        if g_cost < neighbour.g_cost:
+
+                            neighbour.g_cost = g_cost
+                            neighbour.h_cost = np.linalg.norm(target_node.centre - current_node.centre)
+                            neighbour.f_cost = neighbour.g_cost + neighbour.h_cost
+
+                            # Now we have found a better path, redirect the pointer of the neighbour to the current node
+                            neighbour.ponter = current_node
+
+                            # If the neighbour has not yet been "discovered", add it to open with its costs evaluated
+                            if neighbour not in closed and neighbour not in open.heap:
+                            
+                                open.insert(neighbour)
+
+                            # If the node has already been explored, reopen the node - this will be useful for GAA*
+                            elif neighbour in closed:
+
+                                closed.remove(neighbour)
+                                open.insert(neighbour)
+
+                current_node = open.extract()
+
+        # Now that we have gotten to the target node, backtrack to find the completed path
+
+                            
+
+
+
+
+
+
+
 
 
 
@@ -1337,8 +1418,6 @@ TABLE_HEIGHT = Table_Display.height
 TABLE_WIDTH = Table_Display.width
 
 Puck_Display = Puck(image_file="red_puck.png", scale=0.4)
-print(Puck_Display.top_left_valid)
-print(Puck_Display.bottom_right_valid)
 
 Comp_Goal = Goal(281, -90, "computer")
 Player_Goal = Goal(281, 830, "player")
@@ -1485,8 +1564,6 @@ if __name__ == "__main__":
 
         while run_game == True:
             
-            print(Puck_Display.position) 
-            print(Puck_Display.velocity)
 
             # If the first run, instantiate the paddle and grid, preventing reinstantiation every loop
             if first_run:
@@ -1642,7 +1719,6 @@ if __name__ == "__main__":
             else:
 
             
-            
                 User_Paddle.determine_vel()
 
                 Puck_Display.update_pos(Comp_Goal, Player_Goal)
@@ -1742,8 +1818,7 @@ if __name__ == "__main__":
                     counter_edge = 0
 
                 if comp_paddle_collision:
-                
-                    print("Computer collision")
+
                     Puck_Display.update_velocity(Computer_Paddle, comp_paddle_collision, x_collision, y_collision, goal_collision, 
                                                  collision_centre, Player_Goal, Comp_Goal)
 
