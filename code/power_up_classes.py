@@ -55,8 +55,8 @@ class PowerUp:
             self.power_up = choice(self.power_ups)
 
         # Load the corresponding image and scale accordingly
-        image = image.load(self.images[self.power_up])
-        self.image = transform.scale(image, (30, 30))
+        temp_image = image.load(self.images[self.power_up])
+        self.image = transform.scale(temp_image, (30, 30))
 
         # Randomly generate coordinates to spawn the power up in, accouting for the power up dimensions and walls of the table
         self.x = randint(int(self.half_dimensions[0] + 10 + 15), int(self.half_dimensions[1] - 10 - 15))

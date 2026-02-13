@@ -1,17 +1,11 @@
 from pygame import image, transform, mask, mouse, display, draw, mixer
-from numpy import array, round, linalg, ndarray, dot
+from numpy import array, round, linalg, ndarray, dot, sign
 from math import sqrt
 import pygame
 
 # Initialise pygame
 pygame.init()
 screen = display.set_mode((800, 800))
-
-mixer.init()
-collision_sfx = mixer.Sound("Audio/collision_sfx (1)-[AudioTrimmer.com].mp3")
-collision_sfx.set_volume(0.5)
-scoring_sfx = mixer.Sound("Audio/scoring_sfx (1) (1)-[AudioTrimmer.com].mp3")
-scoring_sfx.set_volume(0.5)
 
 class Puck:
 
@@ -100,11 +94,13 @@ class Puck:
 
     # Subroutine to update the position of the puck and move it accordingly
 
-    def update_pos(self, screen: display, Computer_Goal: object, Player_Goal: object, temp_velocity: ndarray = None, temp_position: ndarray = None) -> ndarray:
+    def update_pos(self, screen: display, Computer_Goal: object, Player_Goal: object, temp_velocity: ndarray = None, 
+                   temp_position: ndarray = None, Paddle: object = None, predicted_position: ndarray = None) -> ndarray:
 
         # Check if a velocity is passed so that we can reuse this function for predicting position
         if temp_velocity is None:
 
+            self.previous_pos = self.position.copy()
             puck_velocity = self.velocity
             position = self.position
 
@@ -148,6 +144,38 @@ class Puck:
 
                     self.position[1] = self.bottom_right_valid[1]
 
+            # if paddle_collision == True:
+
+            #     paddle_puck_vector = Paddle.position - self.position
+            #     paddle_puck_vector_previous = Paddle.position - self.position
+
+
+            #     # Before we register a collision, we need to reset the position of the puck so that it isn't inside the paddle
+            #     # This would lead to errors later on 
+
+            #     mag_vector = linalg.norm(paddle_puck_vector)
+
+            #     # If their centres directly overlap, use the previous position of the puck to determine where to reset the puck
+            #     if mag_vector == 0:
+
+            #         paddle_puck_vector = paddle_puck_vector_previous
+            #         mag_vector = linalg.norm(paddle_puck_vector)
+
+            #     # If the puck moves past the centre in the frame before overlap, we need to reset it to the correct side of the paddle
+                
+            #     if sign(paddle_puck_vector)[0] == sign(paddle_puck_vector_previous)[0]:
+
+            #         paddle_puck_vector[0] = -paddle_puck_vector[0]
+
+            #     if sign(paddle_puck_vector)[1] == sign(paddle_puck_vector_previous)[1]:
+
+            #         paddle_puck_vector[1] == -paddle_puck_vector[1]
+
+            #     # Update the puck's position so that it doesn't lie inside the puck
+            #     min_puck_paddle_distance = Paddle.rect.width / 2 + self.rect.width / 2
+
+            #     self.position = self.position + paddle_puck_vector * (min_puck_paddle_distance / mag_vector)
+            #     self.position = round(self.position, decimals=0)
 
             self.rect.center = tuple(self.position)
             draw.rect(screen, (0,0,0), self.rect, 1)
@@ -259,6 +287,38 @@ class Puck:
             
         if paddle_collision == True:
 
+        #     paddle_puck_vector = Paddle.position - self.position
+        #     paddle_puck_vector_previous = Paddle.position - self.position
+
+
+        #     # Before we register a collision, we need to reset the position of the puck so that it isn't inside the paddle
+        #     # This would lead to errors later on 
+
+        #     mag_vector = linalg.norm(paddle_puck_vector)
+
+        #     # If their centres directly overlap, use the previous position of the puck to determine where to reset the puck
+        #     if mag_vector == 0:
+
+        #         paddle_puck_vector = paddle_puck_vector_previous
+        #         mag_vector = linalg.norm(paddle_puck_vector)
+
+        #     # If the puck moves past the centre in the frame before overlap, we need to reset it to the correct side of the paddle
+            
+        #     if sign(paddle_puck_vector)[0] == sign(paddle_puck_vector_previous)[0]:
+
+        #         paddle_puck_vector[0] = -paddle_puck_vector[0]
+
+        #     if sign(paddle_puck_vector)[1] == sign(paddle_puck_vector_previous)[1]:
+
+        #         paddle_puck_vector[1] == -paddle_puck_vector[1]
+
+        #     # Update the puck's position so that it doesn't lie inside the puck
+        #     min_puck_paddle_distance = Paddle.rect.width / 2 + self.rect.width / 2
+
+        #     self.position = self.position + paddle_puck_vector * (min_puck_paddle_distance / mag_vector)
+        #     self.position = round(self.position, decimals=0)
+        #     self.rect.center = tuple(self.position)
+
             # Determine the normal to the paddle to reflect the puck off of
             normal = array(self.rect.center) - array(Paddle.rect.center)
             magnitude = linalg.norm(normal)
@@ -351,7 +411,7 @@ class Puck:
         current_velocity = self.velocity.copy()
         new_position = self.position.copy()
 
-        # We will be predicting 10 frames ahead to give the computer some "reaction time" to the movement of the puck
+        # We will be predicting 20 frames ahead to give the computer some "reaction time" to the movement of the puck
         for i in range(20):
 
             # Check if there are any collisions in this new position to correctly predict the velocity and future puck position

@@ -3,13 +3,14 @@ import pygame
 from numpy import array, round, linalg, full, ndarray
 from math import sqrt
 from heap_classes import Heap
-from random import randint
+from random import randint, choice
 from itertools import chain
 from time import sleep, time
 
 import grid_classes
 import puck_classes
 import goal_classes
+
 
 
 class Computer_Easy:
@@ -42,6 +43,8 @@ class Computer_Easy:
         half_width, half_height = half_dimensions
         self.bottom_right_valid = ( half_width - int(self.width / 2) - 5, half_height - int(self.width / 2) - 5 )
 
+
+
     # The puck collision method will remain the same as the Paddle class
 
     def check_puck_collision(self, Puck: object) -> bool:
@@ -61,7 +64,10 @@ class Computer_Easy:
 
             return False
     
+
+
     # Subroutine to move the computer paddle
+
     def move_paddle(self, Puck: object, Computer_Goal: object, Player_Goal: object, table_dimensions: tuple) -> None:
 
         # If frozen, prevent the paddle from moving
@@ -79,7 +85,7 @@ class Computer_Easy:
             table_width, table_height = table_dimensions
 
             # Work out the direction needed to move the paddle in to meet the puck
-            predicted_pos = Puck.predict_pos(Computer_Goal, Player_Goal)
+            predicted_pos = Puck.predict_pos(Computer_Goal, Player_Goal, (table_width, table_height))
 
             # If the puck is going to be cornered, force the computer to move away from the puck, adding a buffer to give the paddle time to move out the way
 
@@ -92,7 +98,16 @@ class Computer_Easy:
             # Calculate the velocity the computer needs to travel at to move towards the puck
             direction_vector = predicted_pos - self.position
             direction_magnitude = linalg.norm(direction_vector)
-            self.velocity = (self.vel_magnitude / direction_magnitude) * direction_vector
+
+            if direction_magnitude != 0:
+
+                scale = self.vel_magnitude / direction_magnitude
+
+            else:
+
+                scale = 1
+
+            self.velocity = scale * direction_vector
             self.velocity = round(self.velocity, decimals=0)
 
             # Update the position of the paddle
@@ -128,17 +143,27 @@ class Computer_Easy:
                 elif self.position[1] > (table_height / 2 - int(self.width / 2)):
                     self.position[1] = (table_height / 2 - int(self.width / 2))
 
-            
+
+
+    # Procedure to reset the computer's position if a goal has been scored       
 
     def reset(self) -> None:
 
         self.position = array([282, 150])
         self.velocity = array([0,0])
 
+
+
+    # Procudure to draw the computer paddle onto the screen
+
     def draw(self, screen: display) -> None:
 
         screen.blit(self.image, (self.position[0]-self.width/2, self.position[1]-self.height/2))
         pygame.draw.rect(screen, (0,0,0), self.rect, 1)
+
+    
+
+    # Procedure to anticipate the movement of the puck while it is in the opponent's half
 
     def hold_position(self, Puck: object) -> None:
 
@@ -191,6 +216,8 @@ class Computer_Easy:
 
             self.rect.center = tuple(self.position)
 
+
+
 # To create the medium difficulty bot, I will be inheriting from the Computer_Easy Class
 
 class Computer_Medium(Computer_Easy):
@@ -200,6 +227,10 @@ class Computer_Medium(Computer_Easy):
         super().__init__(image_file, half_dimensions)
         self.puck_squares = full(100, None)
         self.current_predicted = None
+
+
+
+    # Function to find the best path to the puck
 
     def find_path(self, grid: list, start_coordinates: tuple, target_coordinates: tuple) -> list:
 
@@ -283,7 +314,7 @@ class Computer_Medium(Computer_Easy):
 
         # Now that we have gotten to the target node, backtrack to find the completed path
 
-        path = full(50, None, dtype=object)
+        path = full(100, None, dtype=object)
         path[0] = target_node
         
         # To avoid the need to use the append function on a list which is very slow, we will use an end pointer to keep track
@@ -300,6 +331,8 @@ class Computer_Medium(Computer_Easy):
             end_pointer += 1
 
         return path, end_pointer - 1
+
+
 
     # Procedure to find the squares the puck occupies
 
@@ -338,11 +371,11 @@ class Computer_Medium(Computer_Easy):
                 counter += 1
 
         
+    
+    # Function to aim the computer's shots
 
-    def attack(self, Puck: object, Computer_Goal: object, Player_Goal: object, grid: list, table_dimensions: tuple,
+    def attack(self, Puck: object, Player_Goal: object, grid: list, table_dimensions: tuple,
                predicted_position: ndarray) -> tuple:
-
-        # predicted_pos = Puck.predict_pos(Computer_Goal, Player_Goal)
 
         self.current_predicted = predicted_position
 
@@ -386,10 +419,14 @@ class Computer_Medium(Computer_Easy):
             target_square.is_target = True
 
             return target_square.position
+        
 
-    def defend(self, Puck: object, grid: list) -> None:
 
-        self.current_predicted = Puck.position
+    # Procedure to help the paddle defend and to minimise own goals
+
+    def defend(self, grid: list, predicted_position: ndarray) -> None:
+
+        self.current_predicted = predicted_position
 
         # Reset the weighted squares - aiming is no longer a priority
         for row in grid:
@@ -414,83 +451,87 @@ class Computer_Medium(Computer_Easy):
 
             counter += 1
  
+
+
+
     # Here we are overriding the move_paddle procedure from the Computer_Easy class
 
     def move_paddle(self, Puck: object, path: ndarray, top_pointer: int, path_finished: bool) -> tuple:
 
-        # Calculate the max distance along the path the computer can move to avoid jerky movement
-        dt = 1 / 60
-        max_distance = self.vel_magnitude * dt
-        total_traversed = 0
+        if not self.frozen:
+            # Calculate the max distance along the path the computer can move to avoid jerky movement
+            dt = 1 / 60
+            max_distance = self.vel_magnitude * dt
+            total_traversed = 0
 
-        # If the path has already been fully traversed, follow through
-        if top_pointer == -1:
+            # If the path has already been fully traversed, follow through
+            if top_pointer == -1:
 
-            self.position = self.position + self.velocity * dt 
-            self.position = round(self.position, decimals=0)
-            self.rect.center = tuple(self.position)
-            path_finished = True
+                self.position = self.position + self.velocity * dt 
+                self.position = round(self.position, decimals=0)
+                self.rect.center = tuple(self.position)
+                path_finished = True
 
-        else:
+            else:
 
-            # Now we keep moving along the path until we reach a "realistic" distance that can be traversed by the paddle in one frame
-            while total_traversed <= max_distance:
+                # Now we keep moving along the path until we reach a "realistic" distance that can be traversed by the paddle in one frame
+                while total_traversed <= max_distance:
 
-                # If the stack is empty, then keep the paddle moving with its current_velocity
-                if top_pointer < 0:
+                    # If the stack is empty, then keep the paddle moving with its current_velocity
+                    if top_pointer < 0:
 
-                    distance_left = max_distance - total_traversed
-                    distance_vector = self.velocity * dt
-                    factor = distance_left / linalg.norm(distance_vector)
-                    distance_to_cover = round(distance_vector * factor, decimals=0)
-                    self.position = self.position + distance_to_cover
-                    self.rect.center = tuple(self.position)
+                        distance_left = max_distance - total_traversed
+                        distance_vector = self.velocity * dt
+                        factor = distance_left / linalg.norm(distance_vector)
+                        distance_to_cover = round(distance_vector * factor, decimals=0)
+                        self.position = self.position + distance_to_cover
+                        self.rect.center = tuple(self.position)
 
-                    # Exit the loop
-                    total_traversed = max_distance + 1
-                    path_finished = True
+                        # Exit the loop
+                        total_traversed = max_distance + 1
+                        path_finished = True
 
-                # We will traverse the path by popping off the top of the "stack" to get from the start square to the target
-                else:
+                    # We will traverse the path by popping off the top of the "stack" to get from the start square to the target
+                    else:
 
-                    next_square = path[top_pointer]
-                    distance_vector = array(next_square.rect.center) - self.position
+                        next_square = path[top_pointer]
+                        distance_vector = array(next_square.rect.center) - self.position
 
-                    mag_distance = linalg.norm(distance_vector)
-                    total_traversed += mag_distance
+                        mag_distance = linalg.norm(distance_vector)
+                        total_traversed += mag_distance
 
-                    self.position = array(next_square.rect.center)
-                    self.rect.center = tuple(self.position)
+                        self.position = array(next_square.rect.center)
+                        self.rect.center = tuple(self.position)
 
-                    # Calculate the current velocity of the paddle
-                    self.velocity = distance_vector / dt
-                    mag_velocity = linalg.norm(self.velocity)
+                        # Calculate the current velocity of the paddle
+                        self.velocity = distance_vector / dt
+                        mag_velocity = linalg.norm(self.velocity)
 
-                    # If the computer collides with the puck, the path has been finished
-                    if self.rect.colliderect(Puck.rect):
+                        # If the computer collides with the puck, the path has been finished
+                        if self.rect.colliderect(Puck.rect):
 
-                        # If the rectangular hitboxes collide, check if the actual objects collide using masks
-                        offset_x, offset_y = Puck.rect.x - self.rect.x, Puck.rect.y - self.rect.y 
+                            # If the rectangular hitboxes collide, check if the actual objects collide using masks
+                            offset_x, offset_y = Puck.rect.x - self.rect.x, Puck.rect.y - self.rect.y 
 
-                        # If the masks do in fact overlap, then move the puck so that it doesn't overlap with the paddle
-                        if self.mask.overlap(Puck.mask, (offset_x, offset_y)):
+                            # If the masks do in fact overlap, then move the puck so that it doesn't overlap with the paddle
+                            if self.mask.overlap(Puck.mask, (offset_x, offset_y)):
 
-                            centre_vector = self.position - Puck.position
-                            max_centre_distance = Puck.rect.width / 2 + self.rect.width / 2
-                            centre_magnitude = linalg.norm(centre_vector)
+                                centre_vector = self.position - Puck.position
+                                max_centre_distance = Puck.rect.width / 2 + self.rect.width / 2
+                                centre_magnitude = linalg.norm(centre_vector)
 
-                            # Reposition the puck so that it is now outside of the paddle's hitbox
-                            self.position = Puck.position + (centre_vector * (max_centre_distance / centre_magnitude))
-                            self.rect.center = tuple(self.position)
+                                # Reposition the puck so that it is now outside of the paddle's hitbox
+                                self.position = Puck.position + (centre_vector * (max_centre_distance / centre_magnitude))
+                                self.rect.center = tuple(self.position)
 
-                            return path, top_pointer, path_finished
+                                return path, top_pointer, path_finished
 
-                    # Avoid divide by 0 errors
-                    if mag_velocity != 0:
+                        # Avoid divide by 0 errors
+                        if mag_velocity != 0:
 
-                        self.velocity = self.velocity * (self.vel_magnitude / mag_velocity)
+                            self.velocity = self.velocity * (self.vel_magnitude / mag_velocity)
 
-                    top_pointer -= 1
+                        top_pointer -= 1
 
         # Check if the computer's final position is valid
 
@@ -514,7 +555,10 @@ class Computer_Medium(Computer_Easy):
 
         return path, top_pointer, path_finished
 
+
+
     # Check whether the computer paddle is moving towards the puck
+
     def paddle_trajectory(self, Puck: object, table_dimensions: tuple, screen: display) -> bool:
 
         # Check the line that the puck is moving along
@@ -544,6 +588,101 @@ class Computer_Medium(Computer_Easy):
         else:
 
             return False
+        
+
+
+# We will be inheriting all of the methods and attributes from the medium level computer bot
+    
+class Computer_Hard(Computer_Medium):
+
+    def __init__(self, image_file, half_dimensions):
+        super().__init__(image_file, half_dimensions)
+
+
+    # Here, we will be overriding the attack method of the Computer_Medium class to be able to perform bank shots
+
+    def attack(self, Puck: object, Player_Goal: object, grid: list, table_dimensions: tuple,
+               predicted_position: ndarray) -> tuple:
+        
+        table_width, table_height = table_dimensions
+
+        shot_type = choice(["bank", "straight"])
+
+        # We will randomly decide where we want to shoot the puck 
+        # n.b. / 2 so that it will enter the goal and not collide with the post of the goal
+        goal_x = randint(int(Player_Goal.left_corner[0] + Puck.rect.width / 2), 
+                           int(Player_Goal.right_corner[0] - Puck.rect.width / 2)) 
+        
+        goal_target = array([goal_x, Player_Goal.left_corner[1]])
+
+        self.current_predicted = predicted_position
+
+        # Deciding the target to aim towards for a bank shot
+
+        if shot_type == "bank":
+
+            # Collision with left wall
+
+            if self.position[0] >= self.current_predicted[0]:
+
+                numerator = goal_target[0]*self.current_predicted[1] + self.current_predicted[0]*goal_target[1]
+                denominator = goal_target[0] + self.current_predicted[0]
+                target_y = numerator / denominator
+                target = array([0, target_y])
+
+            # Collision with right wall
+
+            if self.position[0] < self.current_predicted[0]:
+
+                numerator = (table_width*(goal_target[1] + self.current_predicted[1]) - 
+                             goal_target[1]*self.current_predicted[0] - goal_target[0]*self.current_predicted[1])
+                denominator = 2*table_width - goal_target[0] - self.current_predicted[0]
+                target_y = numerator / denominator
+                target = array([table_width, target_y])
+
+
+        # Deciding the target to aim towards for a straight shot
+
+        elif shot_type == "straight":
+
+            target = goal_target
+
+        # Now we have the correct target to perform the correct shot, we can apply the same method as previously
+
+        # I want to extend the line behind the puck, therefore I will be using vector math to calculate the point of origin
+        direction_vector = target - self.current_predicted
+        mu = -self.current_predicted[1] / direction_vector[1]
+        extended_x = self.current_predicted[0] + mu * direction_vector[0]
+        extended_x = array([extended_x, 0])
+        extended_x = round(extended_x, decimals=0)
+
+        # We want to draw a line connecting the two points and see which squares this line intersects
+
+        target_square = None
+
+        for row in grid:
+
+            for square in row:
+
+                # If the line intersects the square and the square is not an obstacle, decrease the weight of the square
+                if square.rect.clipline(target, extended_x) and not square.is_obstacle:
+                        
+                        if square.rect.center[1] < (self.current_predicted[1] - 70):
+
+                            square.weight = 0
+                            square.weight_decreased = True
+
+                        # We will identify the target square that is the closest valid point along the aimed path to the collision space
+                        if ((target_square is None or square.rect.y > target_square.rect.y) and 
+                            (square.rect.center[1] < self.current_predicted[1])):
+
+                            target_square = square
+                    
+        if target_square is not None:
+
+            target_square.is_target = True
+
+            return target_square.position
 
 
 
@@ -557,7 +696,7 @@ if __name__ == "__main__":
     display.set_caption("Grid Testing")
     screen.fill((255,255,255))
 
-    Computer = Computer_Medium("icons/red_paddle.png", (800, 800))
+    Computer = Computer_Hard("icons/red_paddle.png", (800, 800))
     Puck = puck_classes.Puck("red_puck.png", 0.4, (800, 800))
     Computer_Goal = goal_classes.Goal(281, -90, "computer")
     Player_Goal = goal_classes.Goal(281, 780, "player")
@@ -566,46 +705,23 @@ if __name__ == "__main__":
     counter = 0
 
 
+    grid = grid_classes.create_grid(800, 800)
+
+
     while True:
 
-        # screen.fill((255,255,255))
-        Computer.find_puck(Puck, grid, (200, 200))
-        # Computer.defend(Puck, grid)
+        screen.fill((255, 255, 255))
+        
+        for row in grid:
 
-        # Create a new path every 5th frame
+            for square in row:
 
-        if counter % 5 == 0:
+                square.reset()
 
-            for row in grid:
+        # Find the collision space of the puck and then calculate a trajectory path for the shot
 
-                for square in row:
-
-                    square.reset()
-
-            attack_values = Computer.attack(Puck, Computer_Goal, Player_Goal, grid, (800, 800), (200, 200))
-            if attack_values is not None:
-
-                target_x, target_y = attack_values
-
-            # computer_squares = Computer.position // 10
-            # computer_squares = computer_squares.astype(int)
-
-            # path_output = Computer.find_path(grid, (computer_squares[0], computer_squares[1]), (target_x, target_y))
-
-            # if path_output is not None:
-
-            #     path, top_pointer, path_finished = path_output
-
-            # for square in path:
-
-            #     if square is None:
-
-            #         break
-
-            #     else:
-
-            #         square.is_discovered = False
-            #         square.is_path = True
+        Computer.find_puck(Puck, grid, predicted_position=array(pygame.mouse.get_pos()))
+        Computer.attack(Puck, Player_Goal, grid, (800,800), predicted_position=pygame.mouse.get_pos())
 
         for row in grid:
 
@@ -613,19 +729,9 @@ if __name__ == "__main__":
 
                 square.draw(screen)
 
-
-        # if path_output is not None:
-        #   path, top_pointer = Computer.move_paddle(path, top_pointer)
-        #   Computer.draw(screen)
-
-
+        Computer.draw(screen)
         Puck.test_puck(screen)
-        Computer_Goal.draw(screen)
         Player_Goal.draw(screen)
-
-        
-        
-
 
         for event in pygame.event.get():
 
@@ -633,8 +739,6 @@ if __name__ == "__main__":
 
                 pygame.quit()
                 exit()
-
-        counter += 1
 
         pygame.display.update()
 

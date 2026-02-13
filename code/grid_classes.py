@@ -38,7 +38,7 @@ class GridSquare:
 
     def draw(self, screen: display) -> None:
 
-        if not self.is_obstacle and not self.is_start and not self.is_discovered and not self.is_target and not self.is_path and not self.is_perm_obstacle:# and not self.weight_decreased:
+        if not self.is_obstacle and not self.is_start and not self.is_discovered and not self.is_target and not self.is_path and not self.is_perm_obstacle and not self.weight_decreased:
 
             draw.rect(screen, self.colour, self.rect)
             draw.rect(screen, (0,0,0), self.rect, 1)
@@ -60,8 +60,8 @@ class GridSquare:
             elif self.is_path:
                 self.colour = (0, 255, 0)   # GREEN
 
-            # elif self.weight_decreased:
-            #     self.colour = (0, 255, 0)   # GREEN
+            elif self.weight_decreased:
+                self.colour = (0, 255, 0)   # GREEN
 
             draw.rect(screen, (0,0,0), self.rect, 1)
             draw.rect(screen, self.colour, self.rect)

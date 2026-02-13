@@ -127,7 +127,7 @@ if __name__ == "__main__":
             path = None
             path_finished = False
 
-            Computer_Paddle = computer_classes.Computer_Medium(image_file="icons/blue_paddle.png", 
+            Computer_Paddle = computer_classes.Computer_Hard(image_file="icons/blue_paddle.png", 
                                                                half_dimensions=(TABLE_WIDTH, TABLE_HEIGHT // 2))
             path_output = None
             

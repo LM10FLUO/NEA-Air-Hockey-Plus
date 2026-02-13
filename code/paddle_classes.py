@@ -1,6 +1,6 @@
 # Libraries
 from pygame import mask, mouse, display
-from numpy import array, round
+from numpy import array, round, linalg, sign
 from math import sqrt
 import pygame
 
@@ -22,8 +22,8 @@ class Paddle:
         self.width = self.image.get_width()
         self.height = self.image.get_height()
         self.velocity = array([0, 0])
-        self.initial_pos = array([0,0])
-        self.final_pos = array([0,0])
+        self.previous_pos = array([0,0])
+        self.position = array([0,0])
 
         # Flag to disable movement if frozen:
         self.frozen = False
@@ -40,7 +40,7 @@ class Paddle:
         if self.frozen:
 
             print("frozen")
-            draw_pos = self.final_pos
+            draw_pos = self.position
             self.velocity = array([0, 0])
 
         elif not self.frozen:
@@ -83,7 +83,7 @@ class Paddle:
             # We will use vector properties to simplify and speed up calculations using numpy arrays
 
             # Calculate the change in the x and y positions and calculate the instantaneous velocity of the paddle
-            dx_dy = self.final_pos - self.initial_pos
+            dx_dy = self.position - self.previous_pos
 
             self.velocity = dx_dy / dt
 
@@ -94,8 +94,8 @@ class Paddle:
 
                 self.velocity = self.velocity * 2
 
-            self.initial_pos = self.final_pos
-            self.final_pos = array(list(mouse.get_pos())) # Convert back into an array for calculations
+            self.previous_pos = self.position
+            self.position = array(list(mouse.get_pos())) # Convert back into an array for calculations
 
     def check_puck_collision(self, Puck: object) -> bool:
 
@@ -113,3 +113,46 @@ class Paddle:
         else:
 
             return False
+
+    # def check_puck_collision(self, Puck: object) -> bool:
+
+    #     # Check rectangle collision with the puck
+    #     if self.rect.colliderect(Puck.rect):
+
+    #         # If the rectangular hitboxes collide, check if the actual objects collide using masks
+    #         offset_x, offset_y = Puck.rect.x - self.rect.x, Puck.rect.y - self.rect.y 
+
+    #         # If the masks do in fact overlap, then move the puck so that it doesn't overlap with the paddle
+    #         if self.mask.overlap(Puck.mask, (offset_x, offset_y)):
+
+
+    #             centre_vector = self.position - Puck.position
+    #             max_centre_distance = Puck.rect.width / 2 + self.rect.width / 2
+    #             centre_magnitude = linalg.norm(centre_vector)
+
+    #             if centre_magnitude < max_centre_distance:
+
+    #                 # Check where the puck has approached from to ensure that we move the puck to the correct side of the paddle
+
+    #                 if sign(Puck.velocity)[0] == sign(centre_vector)[0] and sign(Puck.velocity)[1] == sign(centre_vector)[1]:
+
+    #                     # Reposition the puck so that it is now outside of the paddle's hitbox
+    #                     Puck.position = self.position + self.rect.width / 2 + (centre_vector * (max_centre_distance / centre_magnitude))
+    #                     Puck.rect.center = tuple(Puck.position)
+
+    #                 else:
+
+    #                     # Reposition the puck so that it is now outside of the paddle's hitbox
+    #                     Puck.position = self.position + self.rect.width / 2 + (-centre_vector * (max_centre_distance / centre_magnitude))
+    #                     Puck.rect.center = tuple(Puck.position)
+
+
+    #                 return True
+                
+    #         else:
+
+    #             return False
+        
+    #     else:
+
+    #         return False
