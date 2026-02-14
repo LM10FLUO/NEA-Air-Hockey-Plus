@@ -7,6 +7,7 @@ from power_up_classes import PowerUp
 from icon_classes import Icon
 import scoreboard_classes
 import grid_classes
+import obstacle_classes
 
 # Importing libraries
 import pygame
@@ -57,6 +58,7 @@ delay_elapsed: float = 0.0
 trigger_delay: bool = True
 counter: int = 0
 computer_counter: int = 0 
+counter_obstacle: int = 0
 
 pygame.mixer.init()
 collision_sfx = pygame.mixer.Sound("Audio/collision_sfx (1)-[AudioTrimmer.com].mp3")
@@ -181,6 +183,8 @@ if __name__ == "__main__":
             first_run = False
             counter = 0
 
+            Obstacles = obstacle_classes.Obstacle("icons/Obstacles/Obstacle.png")
+
         # Create a new path every 5th frame
         Table_Display.draw(screen)
 
@@ -287,41 +291,32 @@ if __name__ == "__main__":
 
         # If the puck is predicted to be in the player's half, start to hold its position to anticipate movement
 
-        if puck_predicted[1] > TABLE_HEIGHT // 2:
-
-            Computer_Paddle.hold_position(Puck)
-            path = None
-
         # If the puck is in the user's half, do not waste time pathfinding and hold the computer's position to anticipate
-        elif puck_predicted[1] < TABLE_HEIGHT // 2 and scorer is None:
+        if scorer is None:
 
-            if counter % 1 == 0:
+            # If there is already of path and the puck is moving towards the puck, do not update the pathfinding
 
-                # If there is already of path and the puck is moving towards the puck, do not update the pathfinding
+            if path is None or path_finished == True:
 
-                # print(path)
-                # print(path_finished)
-                # print(f"Computer center = {Computer_Paddle.rect.center}\nPuck center = {Puck.rect.center}")
-                if path is None or path_finished == True:
+                path_finished = False
 
-                    path_finished = False
+                for row in grid:
 
-                    # print("entered")
+                    for square in row:
+
+                        square.reset()
+
+                # If the puck is in the player's half, anticipate its movement
+                if puck_predicted[1] > TABLE_HEIGHT // 2:
+
+                    attack_values = Computer_Paddle.hold_position(Puck, Obstacles, grid)
+
+                else:
+
+
                     # Find the collision space of the puck
 
-                    for row in grid:
-
-                        for square in row:
-
-                            square.reset()
-
                     Computer_Paddle.find_puck(Puck, grid, puck_predicted)
-
-                    # for row in grid:
-
-                    #     for square in row:
-
-                    #         square.reset()
 
                     # Find the target square that we want to use to aim the computer's shot
 
@@ -336,51 +331,61 @@ if __name__ == "__main__":
 
                         target_x, target_y = attack_values
 
-                    # If the target position identified cannot be accessed, cancel the pathfinding algorithm to reduce unnecessary computation
-                    if grid[target_x][target_y].is_perm_obstacle or attack_values is None:
+                # If the target position identified cannot be accessed, cancel the pathfinding algorithm to reduce unnecessary computation
+                if grid[target_x][target_y].is_perm_obstacle:
 
-                        grid[target_x][target_y].is_target = False
-                        Computer_Paddle.hold_position(Puck)
-                        path_output = None
+                    grid[target_x][target_y].is_target = False
+                    attack_values = Computer_Paddle.hold_position(Puck, Obstacles, grid)
+                    path_output = None
 
-                    # Otherwise find the shot path
+                # Decide how to move the computer based on current circumstances
+
+                if attack_values is not None:
+
+                    target_x, target_y = attack_values
+
+                    computer_squares = Computer_Paddle.position // 10
+                    computer_squares = computer_squares.astype(int)
+
+                    path_output = Computer_Paddle.find_path(grid, (computer_squares[0], computer_squares[1]), (target_x, target_y))
+
+                    if path_output is not None:
+
+                        path, top_pointer = path_output
+
                     else:
 
-                        computer_squares = Computer_Paddle.position // 10
-                        computer_squares = computer_squares.astype(int)
+                        path = None
 
-                        path_output = Computer_Paddle.find_path(grid, (computer_squares[0], computer_squares[1]), (target_x, target_y))
+        # if path is not None:
 
-                        if path_output is not None:
+        #     for square in path:
 
-                            path, top_pointer = path_output
+        #         if square is None:
 
-                        else:
+        #             break
 
-                            path = None
+        #         else:
 
-        if path is not None:
+        #             square.is_discovered = False
+        #             square.is_path = True
 
-            for square in path:
+        # for row in grid:
 
-                if square is None:
+        #     for square in row:
 
-                    break
+        #         square.draw(screen)
 
-                else:
+        if counter % 600 == 0:
 
-                    square.is_discovered = False
-                    square.is_path = True
+            Obstacles.reset()
+            Obstacles.spawn_obstacle(screen, grid, Puck, Computer_Paddle, Comp_Goal, (TABLE_WIDTH, TABLE_HEIGHT // 2))
 
-        for row in grid:
-
-            for square in row:
-
-                square.draw(screen)
 
         Scoreboard.draw(screen)
         Comp_Goal.draw(screen)
         Player_Goal.draw(screen)
+        Obstacles.draw(screen)
 
         User_Paddle.move_paddle(screen, (TABLE_WIDTH, TABLE_HEIGHT))
 
@@ -444,6 +449,25 @@ if __name__ == "__main__":
 
             x_collision, y_collision, goal_collision, collision_centre, goal_to_check = Puck.check_wall_collision(
                 Comp_Goal, Player_Goal, (TABLE_WIDTH, TABLE_HEIGHT))
+            
+            obstacle_collision, collision_point = Puck.check_obstacle_collision(Obstacles)
+
+            if obstacle_collision:
+
+                counter_obstacle += 1
+
+                if counter_obstacle > 1:
+
+                    obstacle_collision = False
+
+                else:
+
+                    Puck.obstacle_collision(collision_point)
+                    collision_sfx.play()
+
+            else:
+
+                counter_obstacle = False
 
             if x_collision == True:
 

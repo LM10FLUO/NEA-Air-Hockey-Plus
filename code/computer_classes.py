@@ -19,6 +19,8 @@ class Computer_Easy:
 
         image_loaded = image.load(image_file)
         self.image = transform.scale_by(image_loaded, 0.5)
+
+        self.temp_rect = self.image.get_rect()
     
         self.rect = self.image.get_rect()
         self.mask = mask.from_surface(self.image)
@@ -29,6 +31,7 @@ class Computer_Easy:
         self.vel_magnitude = 50
         self.velocity = array([0,0])
         self.position = array([282, 150])
+        self.rect.center = tuple(self.position)
 
         self.colour = "blue"
 
@@ -196,7 +199,7 @@ class Computer_Easy:
                 self.velocity = self.velocity / vel_magnitude * self.vel_magnitude
                 self.velocity = round(self.velocity, decimals=0)
 
-            # Update the velocity accordingly
+            # Update the position accordingly
             self.position = self.position + self.velocity * dt
             self.position = round(self.position, decimals=0)
 
@@ -683,6 +686,75 @@ class Computer_Hard(Computer_Medium):
             target_square.is_target = True
 
             return target_square.position
+        
+    def hold_position(self, Puck: object, Obstacle: object, grid: list) -> tuple:
+
+        if not self.frozen:
+
+                dt = 1 / 60
+
+                distance_y = 0
+                self.vel_magnitude = 200
+
+                # Track the x-coordinate of the puck to anticipate its movement
+                distance_x = Puck.position[0] - self.position[0]
+                self.velocity[0] = distance_x / dt
+
+                # while the puck is not in the computer half, make it back to the centre line to anticipate the puck's movement
+                if self.position[1] != 150:
+
+                    self.vel_magnitude = 500
+                    distance_y = 150 - self.position[1]
+                    self.velocity[1] = distance_y / dt
+
+                vel_magnitude = linalg.norm(self.velocity)
+
+                if vel_magnitude == 0:
+
+                    self.velocity = array([0,0])
+
+                else:
+
+                    self.velocity = self.velocity / vel_magnitude * self.vel_magnitude
+                    self.velocity = round(self.velocity, decimals=0)
+
+        # We will try to use the original method of moving the puck, but it the obstacle obstructs this, we will user pathfinding
+
+        self.temp_rect.center = tuple(self.position + self.velocity * dt)
+
+        if self.temp_rect.colliderect(Obstacle.rect):
+        # Track the x_position of the puck
+        
+            grid_x_coord = Puck.position[0] // 10
+
+            # We can no longer guarantee that moving to the centre y position will not collide with an object
+            # Therefore we will just randomly generate a y position that can be moved to in a valid way
+
+            square = None
+
+            while square is  None:
+
+                grid_y_coord = 15
+
+                if grid[int(grid_x_coord)][grid_y_coord].is_obstacle:
+                
+                    # If the position we wanted is not accessible, then move to the next available one based on the puck's movement
+
+                    if Puck.velocity[0] >= 0:
+
+                        grid_x_coord += 1
+
+                    elif Puck.velocity[1] < 0:
+
+                        grid_x_coord -= 1   
+                
+                square = (int(grid_x_coord), grid_y_coord)
+
+            return square
+
+
+
+        
 
 
 

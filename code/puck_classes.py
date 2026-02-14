@@ -268,7 +268,6 @@ class Puck:
 
         return x_collision, y_collision, goal_collision, collision_centre, goal_to_check
 
-
     # Subroutine to update the velocity of the puck based on its interactions on the table 
 
     def update_velocity(self, Paddle: object, paddle_collision: bool, x_collision: bool, y_collision: bool, 
@@ -462,3 +461,39 @@ class Puck:
             new_position = self.update_pos(screen=screen, Computer_Goal=Computer_Goal, Player_Goal=Player_Goal, temp_velocity=current_velocity, temp_position=new_position)
 
         return new_position
+    
+    # So that we don't affect the other computer difficulties' functionalities, I will handle obstacle collisions as a separate function
+
+    def check_obstacle_collision(self, Obstacle: object) -> ndarray:
+
+        # I will be taking a different approach where I will be using mask and rect collisions due to the different shapes
+        obstacle_collision = False
+        collision_point = None
+
+
+        # Check rect first as it is faster than checking mask collisions
+        if self.rect.colliderect(Obstacle.rect):
+
+            # Check for mask overlap, finding the first point of collision
+            # As the obstacle is a square, we can more easily find the coordinate of intersection
+            collision_point = Obstacle.mask.overlap(other=self.mask, offset=(self.rect.x - Obstacle.rect.x, self.rect.y - Obstacle.rect.y))
+
+            if collision_point:
+
+                obstacle_collision = True
+                collision_point = array(collision_point) + array(Obstacle.rect.topleft)
+
+        return obstacle_collision, collision_point
+
+    def obstacle_collision(self, collision_point: ndarray):
+
+        normal = self.position - collision_point
+        magnitude = linalg.norm(normal)
+
+        # Find the unit vector of the normal line
+        unit_normal = normal / magnitude
+
+        # Calculate the new velocity of the puck
+        self.velocity = self.velocity - 2 * dot(self.velocity, unit_normal) * unit_normal
+        self.velocity = round(self.velocity, decimals=0)
+
