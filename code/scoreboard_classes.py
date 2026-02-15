@@ -46,3 +46,16 @@ class Scoreboard:
         elif player == "player":
 
             self.p_score += self.p_multiplier
+
+    # Determine if a player has won yet
+
+    def check_score(self, max_score: int):
+
+        if self.comp_score >= max_score:
+
+            return "win"
+        
+        elif self.p_score >= max_score:
+
+            return "loss"
+

@@ -496,4 +496,3 @@ class Puck:
         # Calculate the new velocity of the puck
         self.velocity = self.velocity - 2 * dot(self.velocity, unit_normal) * unit_normal
         self.velocity = round(self.velocity, decimals=0)
-

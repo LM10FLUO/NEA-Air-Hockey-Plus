@@ -33,7 +33,7 @@ class Obstacle:
 
     def spawn_obstacle(self, screen: display, grid: list, Puck: object, Paddle: object, Computer_Goal: object, half_dimensions: tuple) -> None:
 
-        self.squares_occupied = full(100, None)
+        self.squares_occupied = full(1000, None)
         # First we need to determine the possible valid positions that we can spawn the obstacle in
         # We need to note that the obstacle has dimensions of 3 grid squares x 3 grid squares
 
